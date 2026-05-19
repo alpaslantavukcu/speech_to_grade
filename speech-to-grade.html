@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Voice Grader</title>
+<title>Sesli Notlandırıcı</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,500;9..144,700;9..144,900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -577,24 +577,55 @@
   }
   .modal-actions .ctrl.primary:hover { background: var(--accent); border-color: var(--accent); }
 
-  /* Session name */
-  .session-name-input {
+  /* Session banner */
+  .session-banner {
+    text-align: center;
+    padding: 0 0 36px;
+  }
+
+  .session-label {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
+    font-size: 10px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  .session-name-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .session-name-input {
+    font-family: 'Fraunces', Georgia, serif;
+    font-size: 30px;
     font-weight: 700;
+    font-style: italic;
     color: var(--ink);
     background: transparent;
     border: none;
-    border-bottom: 1px dashed var(--line);
-    padding: 2px 4px;
-    width: 210px;
-    display: block;
-    text-align: right;
-    margin-bottom: 6px;
+    border-bottom: 2px dashed var(--line);
+    text-align: center;
+    padding: 2px 8px;
+    width: 520px;
+    max-width: 75vw;
+    transition: border-color 0.15s;
   }
-  .session-name-input:hover { border-bottom-color: var(--muted); }
-  .session-name-input:focus { outline: none; border-bottom-color: var(--ink); background: var(--paper-2); }
-  .session-name-input::placeholder { color: var(--muted); font-weight: 400; }
+  .session-name-input:hover  { border-bottom-color: var(--muted); }
+  .session-name-input:focus  { outline: none; border-bottom-color: var(--ink); border-bottom-style: solid; }
+  .session-name-input::placeholder { color: var(--muted); font-weight: 300; font-style: italic; }
+
+  .session-edit-icon {
+    font-size: 18px;
+    color: var(--muted);
+    opacity: 0;
+    transition: opacity 0.2s;
+    user-select: none;
+    cursor: pointer;
+  }
+  .session-name-row:hover .session-edit-icon { opacity: 1; }
 
   /* Save button */
   #saveBtn { background: var(--ink); color: var(--paper); border-color: var(--ink); font-weight: 700; }
@@ -605,7 +636,7 @@
 <div class="container">
 
   <div id="unsupported" class="unsupported">
-    ⚠ Your browser does not support the Web Speech API. Please use Chrome, Edge, or Safari.
+    ⚠ Tarayıcınız Web Speech API'yi desteklemiyor. Lütfen Chrome, Edge veya Safari kullanın.
   </div>
 
   <header>
@@ -614,26 +645,34 @@
       <h1>Voice<span class="accent">·</span>Grader<em style="font-style:normal;color:var(--accent);">.</em></h1>
     </div>
     <div class="meta">
-      <input id="sessionNameInput" type="text" class="session-name-input"
-             value="Untitled Session" placeholder="Session name…" maxlength="80" />
-      Web Speech API · Local only
+      <strong>Eller serbest giriş</strong>
+      Web Speech API · Yalnızca yerel
     </div>
   </header>
+
+  <div class="session-banner">
+    <div class="session-label">Oturum</div>
+    <div class="session-name-row">
+      <input id="sessionNameInput" type="text" class="session-name-input"
+             value="İsimsiz Oturum" placeholder="Oturuma isim vermek için tıklayın…" maxlength="80" />
+      <span class="session-edit-icon" aria-hidden="true">✎</span>
+    </div>
+  </div>
 
   <div class="grid">
     <!-- LEFT: TABLE -->
     <section class="panel">
       <div class="panel-label">
-        <span><span class="dot"></span>Grade Sheet</span>
-        <span id="counter">0 / 0 graded</span>
+        <span><span class="dot"></span>Not Listesi</span>
+        <span id="counter">0 / 0 notlandırıldı</span>
       </div>
 
       <table>
         <thead>
           <tr>
             <th class="idx">#</th>
-            <th>Name</th>
-            <th class="num">Grade</th>
+            <th>Ad</th>
+            <th class="num">Not</th>
             <th class="act"></th>
           </tr>
         </thead>
@@ -641,36 +680,36 @@
       </table>
 
       <div class="add-row">
-        <input id="newName" type="text" placeholder="Add a student name..." />
-        <button class="add-btn" id="addBtn">Add</button>
+        <input id="newName" type="text" placeholder="Öğrenci adı ekle..." />
+        <button class="add-btn" id="addBtn">Ekle</button>
       </div>
 
       <div class="stats">
-        <span><strong id="statTotal">0</strong>Students</span>
-        <span><strong id="statDone">0</strong>Graded</span>
-        <span><strong id="statAvg">—</strong>Average</span>
+        <span><strong id="statTotal">0</strong>Öğrenci</span>
+        <span><strong id="statDone">0</strong>Notlandırıldı</span>
+        <span><strong id="statAvg">—</strong>Ortalama</span>
       </div>
     </section>
 
     <!-- RIGHT: MIC + CONTROLS -->
     <section class="panel">
       <div class="panel-label">
-        <span><span class="dot" id="recDot"></span>Voice Input</span>
-        <span id="recIndicator">IDLE</span>
+        <span><span class="dot" id="recDot"></span>Ses Girişi</span>
+        <span id="recIndicator">BEKLEMEDE</span>
       </div>
 
       <div class="mic-stage">
-        <button class="mic" id="micBtn" aria-label="Toggle microphone">
+        <button class="mic" id="micBtn" aria-label="Mikrofonu aç/kapat">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <rect x="9" y="3" width="6" height="12" rx="3"/>
             <path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>
           </svg>
         </button>
-        <div class="status" id="status">Tap to start listening</div>
+        <div class="status" id="status">Başlamak için tıklayın</div>
       </div>
 
       <div class="transcript" id="transcript">
-        <span class="placeholder">Heard speech will appear here...</span>
+        <span class="placeholder">Duyulan konuşma burada görünecek...</span>
       </div>
 
       <div class="lang-select" id="langSelect">
@@ -679,14 +718,14 @@
       </div>
 
       <div class="controls">
-        <button class="ctrl full" id="saveBtn">Save</button>
-        <button class="ctrl" id="openBtn">Open</button>
-        <button class="ctrl" id="newBtn">New</button>
-        <button class="ctrl full" id="copyBtn">📋 Copy for Excel</button>
-        <button class="ctrl" id="pasteBtn">Paste Names</button>
-        <button class="ctrl" id="importBtn">Import Names</button>
-        <button class="ctrl" id="exportBtn">Export CSV</button>
-        <button class="ctrl" id="clearGradesBtn">Clear Grades</button>
+        <button class="ctrl full" id="saveBtn">Kaydet</button>
+        <button class="ctrl" id="openBtn">Aç</button>
+        <button class="ctrl" id="newBtn">Yeni</button>
+        <button class="ctrl full" id="copyBtn">📋 Excel'e Kopyala</button>
+        <button class="ctrl" id="pasteBtn">İsim Yapıştır</button>
+        <button class="ctrl" id="importBtn">İsim İçe Aktar</button>
+        <button class="ctrl" id="exportBtn">CSV Dışa Aktar</button>
+        <button class="ctrl" id="clearGradesBtn">Notları Temizle</button>
       </div>
 
       <div class="log" id="log"></div>
@@ -694,12 +733,12 @@
   </div>
 
   <div class="help">
-    <h3>Nasıl kullanılır · How to speak</h3>
+    <h3>Nasıl kullanılır</h3>
     <code>"İsim + not"</code> şeklinde söyleyin:<br>
     → <code>"Enes 85"</code>  ·  <code>"Alp doksan iki"</code>  ·  <code>"Püren seksen beş aldı"</code><br>
-    → English (EN seçili iken): <code>"Enes 85"</code>  ·  <code>"Alp got 92"</code><br>
+    → İngilizce (EN seçili iken): <code>"Enes 85"</code>  ·  <code>"Alp got 92"</code><br>
     Mikrofon açık kalır — isimleri arka arkaya söyleyebilirsiniz. Durdurmak için tekrar tıklayın.<br>
-    <code>Space</code> → mikrofon aç/kapat &nbsp;·&nbsp; Not hücresine tıklayın → el ile düzenleyin
+    <code>Boşluk</code> → mikrofon aç/kapat &nbsp;·&nbsp; Not hücresine tıklayın → el ile düzenleyin
   </div>
 
   <input type="file" id="fileInput" accept=".txt,text/plain" style="display:none" />
@@ -708,12 +747,12 @@
   <!-- Overwrite Confirmation Modal -->
   <div id="confirmModal" class="modal-overlay" style="display:none">
     <div class="modal">
-      <div class="modal-label">Grade already entered</div>
-      <h2 id="confirmTitle">Overwrite grade?</h2>
-      <p id="confirmBody">This student already has a grade.</p>
+      <div class="modal-label">Not zaten girilmiş</div>
+      <h2 id="confirmTitle">Notu üzerine yaz?</h2>
+      <p id="confirmBody">Bu öğrencinin zaten bir notu var.</p>
       <div class="modal-actions">
-        <button class="ctrl" id="confirmCancel">Cancel</button>
-        <button class="ctrl primary" id="confirmOk">Overwrite</button>
+        <button class="ctrl" id="confirmCancel">İptal</button>
+        <button class="ctrl primary" id="confirmOk">Üzerine Yaz</button>
       </div>
     </div>
   </div>
@@ -721,13 +760,13 @@
   <!-- Import Mode Modal -->
   <div id="importModeModal" class="modal-overlay" style="display:none">
     <div class="modal">
-      <div class="modal-label">Import names</div>
-      <h2 id="importModeTitle">Replace or append?</h2>
+      <div class="modal-label">İsim içe aktar</div>
+      <h2 id="importModeTitle">Değiştir veya ekle?</h2>
       <p id="importModeBody"></p>
       <div class="modal-actions">
-        <button class="ctrl" id="importModeCancel">Cancel</button>
-        <button class="ctrl" id="importModeAppend">Append</button>
-        <button class="ctrl primary" id="importModeReplace">Replace</button>
+        <button class="ctrl" id="importModeCancel">İptal</button>
+        <button class="ctrl" id="importModeAppend">Ekle</button>
+        <button class="ctrl primary" id="importModeReplace">Değiştir</button>
       </div>
     </div>
   </div>
@@ -735,13 +774,13 @@
   <!-- Paste Names Modal -->
   <div id="pasteModal" class="modal-overlay" style="display:none">
     <div class="modal">
-      <div class="modal-label">Paste from Excel</div>
-      <h2>Paste student names</h2>
-      <p>Copy a column of names from Excel and paste below. One name per line.</p>
+      <div class="modal-label">Excel'den Yapıştır</div>
+      <h2>Öğrenci isimlerini yapıştırın</h2>
+      <p>Excel'den bir sütun isim kopyalayıp aşağıya yapıştırın. Her satıra bir isim.</p>
       <textarea id="pasteArea" placeholder="Enes&#10;Alp&#10;Püren&#10;Ayşe&#10;Mehmet" autofocus></textarea>
       <div class="modal-actions">
-        <button class="ctrl" id="pasteCancel">Cancel</button>
-        <button class="ctrl primary" id="pasteOk">Load Names</button>
+        <button class="ctrl" id="pasteCancel">İptal</button>
+        <button class="ctrl primary" id="pasteOk">İsimleri Yükle</button>
       </div>
     </div>
   </div>
@@ -758,7 +797,7 @@ const state = {
   lang: 'tr-TR',
   recognition: null,
   fileHandle: null,
-  sessionName: 'Untitled Session',
+  sessionName: 'İsimsiz Oturum',
   dirty: false,
 };
 
@@ -790,11 +829,11 @@ function setDirty(dirty) {
   state.dirty = dirty;
   const btn = document.getElementById('saveBtn');
   if (btn) {
-    if (dirty)              btn.textContent = '● Save';
-    else if (state.fileHandle) btn.textContent = '✓ Saved';
-    else                    btn.textContent = 'Save';
+    if (dirty)              btn.textContent = '● Kaydet';
+    else if (state.fileHandle) btn.textContent = '✓ Kaydedildi';
+    else                    btn.textContent = 'Kaydet';
   }
-  document.title = (dirty ? '● ' : '') + state.sessionName + ' — Voice Grader';
+  document.title = (dirty ? '● ' : '') + state.sessionName + ' — Sesli Notlandırıcı';
 }
 
 function syncSessionNameInput() {
@@ -827,7 +866,7 @@ async function saveSessionAs() {
       });
       state.fileHandle = handle;
       await writeToHandle(handle);
-    } catch(e) { if (e.name !== 'AbortError') log('Save failed', 'err'); }
+    } catch(e) { if (e.name !== 'AbortError') log('Kaydetme başarısız', 'err'); }
   } else {
     const blob = new Blob([JSON.stringify(buildSessionData(), null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -835,7 +874,7 @@ async function saveSessionAs() {
     a.href = url; a.download = state.sessionName + '.json'; a.click();
     URL.revokeObjectURL(url);
     setDirty(false);
-    log('Downloaded: ' + state.sessionName + '.json', 'ok');
+    log('İndirildi: ' + state.sessionName + '.json', 'ok');
   }
 }
 
@@ -845,12 +884,12 @@ async function writeToHandle(handle) {
     await writable.write(JSON.stringify(buildSessionData(), null, 2));
     await writable.close();
     setDirty(false);
-    log('Saved: ' + state.sessionName, 'ok');
-  } catch(e) { log('Save failed: ' + e.message, 'err'); }
+    log('Kaydedildi: ' + state.sessionName, 'ok');
+  } catch(e) { log('Kaydetme başarısız: ' + e.message, 'err'); }
 }
 
 async function openSession() {
-  if (state.dirty && !confirm('Unsaved changes will be lost. Continue?')) return;
+  if (state.dirty && !confirm('Kaydedilmemiş değişiklikler kaybolacak. Devam et?')) return;
   if (window.showOpenFilePicker) {
     try {
       const [handle] = await window.showOpenFilePicker({
@@ -860,15 +899,15 @@ async function openSession() {
       applySessionData(JSON.parse(text));
       state.fileHandle = handle;
       setDirty(false);
-      log('Opened: ' + state.sessionName, 'ok');
-    } catch(e) { if (e.name !== 'AbortError') log('Open failed', 'err'); }
+      log('Açıldı: ' + state.sessionName, 'ok');
+    } catch(e) { if (e.name !== 'AbortError') log('Açma başarısız', 'err'); }
   } else {
     document.getElementById('sessionFileInput').click();
   }
 }
 
 function newSession() {
-  if (state.dirty && !confirm('Unsaved changes will be lost. Continue?')) return;
+  if (state.dirty && !confirm('Kaydedilmemiş değişiklikler kaybolacak. Devam et?')) return;
   state.students = [];
   state.sessionName = 'Untitled Session';
   state.fileHandle = null;
@@ -1622,6 +1661,7 @@ sessionNameInput.addEventListener('blur', () => {
   saveState();
 });
 sessionNameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sessionNameInput.blur(); });
+document.querySelector('.session-edit-icon').onclick = () => sessionNameInput.focus();
 
 // File operations
 document.getElementById('saveBtn').onclick = () => saveSession();
@@ -1638,7 +1678,7 @@ document.getElementById('sessionFileInput').onchange = (e) => {
       applySessionData(data);
       state.fileHandle = null;
       setDirty(false);
-      log('Opened: ' + state.sessionName, 'ok');
+      log('Açıldı: ' + state.sessionName, 'ok');
     } catch(err) { log('Invalid session file', 'err'); }
   };
   reader.readAsText(file, 'UTF-8');
