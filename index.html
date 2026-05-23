@@ -379,6 +379,10 @@
   #copyBtn:hover { background: var(--ink); border-color: var(--ink); }
   #copyBtn.copied { background: var(--gold); color: var(--ink); border-color: var(--gold); }
 
+  #undoBtn:not(:disabled) { background: var(--paper); border-color: var(--ink); color: var(--ink); }
+  #undoBtn:not(:disabled):hover { background: var(--ink); color: var(--paper); }
+  #undoBtn:disabled { opacity: 0.35; cursor: not-allowed; }
+
   /* LANGUAGE */
   .lang-select {
     margin-top: 16px;
@@ -880,6 +884,7 @@
         <button class="ctrl" id="importBtn">İsim İçe Aktar</button>
         <button class="ctrl" id="exportBtn">CSV Dışa Aktar</button>
         <button class="ctrl" id="clearGradesBtn">Notları Temizle</button>
+        <button class="ctrl full" id="undoBtn" disabled title="Geri alınacak işlem yok">↩ Geri Al</button>
       </div>
 
       <div class="log" id="log"></div>
@@ -1029,6 +1034,44 @@ function playWarningSound() {
   } catch(e) { /* audio not available */ }
 }
 
+// ============ UNDO ============
+const undoStack = [];
+const UNDO_MAX = 50;
+
+function pushUndo() {
+  undoStack.push(JSON.parse(JSON.stringify({
+    students: state.students,
+    columns: state.columns,
+    nextColId: state.nextColId,
+    activeColId: state.activeColId,
+  })));
+  if (undoStack.length > UNDO_MAX) undoStack.shift();
+  updateUndoBtn();
+}
+
+function undo() {
+  if (!undoStack.length) return;
+  const snap = undoStack.pop();
+  state.students   = snap.students;
+  state.columns    = snap.columns;
+  state.nextColId  = snap.nextColId;
+  state.activeColId = snap.activeColId;
+  render();
+  renderColSelector();
+  updateUndoBtn();
+  setDirty(true);
+  log('Geri alındı', 'ok');
+}
+
+function updateUndoBtn() {
+  const btn = document.getElementById('undoBtn');
+  if (!btn) return;
+  btn.disabled = undoStack.length === 0;
+  btn.title = undoStack.length
+    ? `Geri al (${undoStack.length} adım)`
+    : 'Geri alınacak işlem yok';
+}
+
 // ============ PERSISTENCE ============
 function saveState() {
   try {
@@ -1132,6 +1175,8 @@ function applySessionData(data) {
     state.students = migrateStudents(data.students, state.columns);
   }
   if (data.name) { state.sessionName = data.name; syncSessionNameInput(); }
+  undoStack.length = 0;
+  updateUndoBtn();
   render();
   renderColSelector();
 }
@@ -1198,6 +1243,8 @@ function newSession() {
   state.activeColId = 'g1';
   state.sessionName = 'Untitled Session';
   state.fileHandle = null;
+  undoStack.length = 0;
+  updateUndoBtn();
   syncSessionNameInput();
   render();
   renderColSelector();
@@ -1328,6 +1375,7 @@ function parseUtterance(text, lang) {
 
 // ============ COLUMN MANAGEMENT ============
 function addColumn() {
+  pushUndo();
   const id = 'g' + state.nextColId++;
   const name = 'Not ' + state.columns.length + 1;
   state.columns.push({ id, name });
@@ -1358,6 +1406,7 @@ function removeColumn(colId) {
     return;
   }
 
+  pushUndo();
   const idx = state.columns.findIndex(c => c.id === colId);
   state.columns.splice(idx, 1);
   state.students.forEach(s => { delete s.grades[colId]; });
@@ -1372,7 +1421,8 @@ function removeColumn(colId) {
 
 function renameColumn(colId, newName) {
   const col = state.columns.find(c => c.id === colId);
-  if (!col || !newName) return;
+  if (!col || !newName || col.name === newName) return;
+  pushUndo();
   col.name = newName;
   // Only refresh the selector buttons — don't rebuild thead (would steal input focus)
   renderColSelector();
@@ -1473,6 +1523,7 @@ function render() {
   tbody.querySelectorAll('.row-del').forEach(btn => {
     btn.onclick = () => {
       const idx = parseInt(btn.dataset.idx);
+      pushUndo();
       state.students.splice(idx, 1);
       render();
       saveState();
@@ -1495,12 +1546,18 @@ function render() {
       inp.focus(); inp.select();
       const commit = () => {
         const raw = inp.value.trim();
-        if (raw === '') { state.students[idx].grades[colId] = null; }
+        const cur = state.students[idx].grades[colId];
+        let newVal;
+        if (raw === '') { newVal = null; }
         else {
           const v = parseFloat(raw);
-          if (!isNaN(v) && v >= 0 && v <= 100) state.students[idx].grades[colId] = Math.round(v * 10) / 10;
+          newVal = (!isNaN(v) && v >= 0 && v <= 100) ? Math.round(v * 10) / 10 : cur;
         }
-        saveState();
+        if (newVal !== cur) {
+          pushUndo();
+          state.students[idx].grades[colId] = newVal;
+          saveState();
+        }
         render();
       };
       inp.onblur = commit;
@@ -1791,6 +1848,7 @@ function fmtPct(v) {
 }
 
 function applyGrade(index, grade, confidence = 1) {
+  pushUndo();
   const colId = state.activeColId;
   const activeCol = state.columns.find(c => c.id === colId);
   state.students[index].grades[colId] = grade;
@@ -1950,6 +2008,7 @@ document.getElementById('addBtn').onclick = () => {
   const input = document.getElementById('newName');
   const v = input.value.trim();
   if (v) {
+    pushUndo();
     const grades = {};
     state.columns.forEach(c => { grades[c.id] = null; });
     state.students.push({ name: v, grades });
@@ -2017,6 +2076,7 @@ document.getElementById('clearGradesBtn').onclick = () => {
   };
 
   const onOk = () => {
+    pushUndo();
     if (selectedColId === '__all__') {
       state.students.forEach(s => state.columns.forEach(c => { s.grades[c.id] = null; }));
       log('Tüm sütunların notları temizlendi', 'ok');
@@ -2127,6 +2187,7 @@ function loadNames(names, source) {
     return false;
   }
   if (state.students.length === 0) {
+    pushUndo();
     state.students = names.map(name => {
       const grades = {};
       state.columns.forEach(c => { grades[c.id] = null; });
@@ -2165,6 +2226,7 @@ function showImportModeModal(names, source) {
     resumeRecognitionAfterModal();
   };
   const onReplace = () => {
+    pushUndo();
     state.students = names.map(name => {
       const grades = {};
       state.columns.forEach(c => { grades[c.id] = null; });
@@ -2175,6 +2237,7 @@ function showImportModeModal(names, source) {
     cleanup();
   };
   const onAppend = () => {
+    pushUndo();
     const existing = new Set(state.students.map(s => s.name.toLowerCase()));
     const toAdd = names.filter(n => !existing.has(n.toLowerCase()));
     state.students.push(...toAdd.map(name => {
@@ -2248,6 +2311,7 @@ document.querySelector('.session-edit-icon').onclick = () => sessionNameInput.fo
 document.getElementById('saveBtn').onclick = () => saveSession();
 document.getElementById('openBtn').onclick = () => openSession();
 document.getElementById('newBtn').onclick  = () => newSession();
+document.getElementById('undoBtn').onclick = () => undo();
 
 document.getElementById('sessionFileInput').onchange = (e) => {
   const file = e.target.files[0];
@@ -2275,6 +2339,13 @@ document.addEventListener('keydown', (e) => {
     return;
   }
 
+  // Ctrl/Cmd+Z: undo anywhere (even inside inputs)
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+    e.preventDefault();
+    undo();
+    return;
+  }
+
   const tag = document.activeElement.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA') return;
 
@@ -2299,6 +2370,7 @@ document.addEventListener('keydown', (e) => {
 const hadCrashData = loadSavedState();
 render();
 renderColSelector();
+updateUndoBtn();
 syncSessionNameInput();
 setDirty(hadCrashData); // crash-recovery data is unsaved relative to any file
 state.recognition = initRecognition();
