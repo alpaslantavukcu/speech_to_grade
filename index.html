@@ -986,21 +986,45 @@ function playWarningSound() {
   try {
     const ctx = getAudioCtx();
     const t = ctx.currentTime;
-    // Two descending tones: a quick "doo-doo" error signal
-    const freqs = [440, 300];
-    freqs.forEach((freq, i) => {
-      const osc  = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
+
+    // Three-note descending "wrong answer" buzz:
+    // sawtooth wave → lowpass filter → gain envelope
+    // Notes: 420 Hz → 320 Hz → 220 Hz, each ~150 ms, gap ~20 ms
+    const notes = [
+      { freq: 420, start: 0.00, dur: 0.14 },
+      { freq: 320, start: 0.16, dur: 0.14 },
+      { freq: 210, start: 0.32, dur: 0.22 },
+    ];
+
+    notes.forEach(({ freq, start, dur }) => {
+      const osc    = ctx.createOscillator();
+      const filter = ctx.createBiquadFilter();
+      const gain   = ctx.createGain();
+
+      // Sawtooth for a harsh, attention-grabbing timbre
+      osc.type = 'sawtooth';
+      // Slight downward pitch slide within each note for extra "wrong" feel
+      osc.frequency.setValueAtTime(freq * 1.06, t + start);
+      osc.frequency.linearRampToValueAtTime(freq * 0.94, t + start + dur);
+
+      // Lowpass filter tames the harshest overtones while keeping the buzz
+      filter.type = 'lowpass';
+      filter.frequency.value = 1400;
+      filter.Q.value = 1.5;
+
+      osc.connect(filter);
+      filter.connect(gain);
       gain.connect(ctx.destination);
-      osc.type = 'sine';
-      osc.frequency.value = freq;
-      const start = t + i * 0.13;
-      gain.gain.setValueAtTime(0, start);
-      gain.gain.linearRampToValueAtTime(0.25, start + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.12);
-      osc.start(start);
-      osc.stop(start + 0.13);
+
+      // Sharp attack, sustain, quick release
+      const s = t + start;
+      gain.gain.setValueAtTime(0, s);
+      gain.gain.linearRampToValueAtTime(0.42, s + 0.012);
+      gain.gain.setValueAtTime(0.42, s + dur - 0.04);
+      gain.gain.linearRampToValueAtTime(0, s + dur);
+
+      osc.start(s);
+      osc.stop(s + dur + 0.01);
     });
   } catch(e) { /* audio not available */ }
 }
