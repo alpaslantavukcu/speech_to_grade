@@ -630,6 +630,165 @@
   /* Save button */
   #saveBtn { background: var(--ink); color: var(--paper); border-color: var(--ink); font-weight: 700; }
   #saveBtn:hover { background: var(--accent-2); border-color: var(--accent-2); }
+
+  /* COLUMN SELECTOR */
+  .col-selector {
+    margin-top: 16px;
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .col-btn {
+    padding: 6px 12px;
+    background: transparent;
+    border: 1px solid var(--line);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .col-btn.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .col-btn:hover:not(.active) { border-color: var(--muted); color: var(--ink); }
+
+  .col-add-btn {
+    padding: 6px 10px;
+    background: transparent;
+    border: 1px dashed var(--line);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    color: var(--muted);
+  }
+  .col-add-btn:hover { border-color: var(--accent-2); color: var(--accent-2); }
+
+  /* GRADE COLUMN HEADERS */
+  thead th.grade-col {
+    position: relative;
+    min-width: 100px;
+    text-align: right;
+    padding-right: 24px;
+  }
+
+  thead th.grade-col.col-active {
+    color: var(--ink);
+    border-bottom-color: var(--accent);
+  }
+
+  .col-header-inner {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+  }
+
+  .col-name-input {
+    background: transparent;
+    border: none;
+    border-bottom: 1px dashed transparent;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: inherit;
+    width: 70px;
+    text-align: right;
+    cursor: pointer;
+    padding: 0;
+  }
+  .col-name-input:hover { border-bottom-color: var(--muted); }
+  .col-name-input:focus { outline: none; border-bottom-color: var(--ink); border-bottom-style: solid; cursor: text; }
+
+  .col-remove-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0 2px;
+    line-height: 1;
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s;
+  }
+  thead th.grade-col:hover .col-remove-btn { opacity: 1; }
+  .col-remove-btn:hover { color: var(--accent); }
+
+  /* GRADE COLUMN ADD HEADER BUTTON */
+  thead th.col-add-th {
+    width: 36px;
+    text-align: center;
+    padding: 0;
+  }
+  .col-add-th-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    padding: 4px 6px;
+  }
+  .col-add-th-btn:hover { color: var(--accent-2); }
+
+  /* ACTIVE COLUMN CELL HIGHLIGHT */
+  tbody td.grade.col-active {
+    border-left: 2px solid rgba(214, 73, 51, 0.2);
+  }
+
+  /* CLEAR GRADES MODAL — column picker */
+  .clear-col-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 20px;
+  }
+
+  .clear-col-option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border: 1px solid var(--line);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    user-select: none;
+  }
+  .clear-col-option:hover { border-color: var(--muted); background: var(--paper-2); }
+  .clear-col-option.selected { border-color: var(--accent); background: rgba(214, 73, 51, 0.07); }
+  .clear-col-option.selected .clear-radio { background: var(--accent); border-color: var(--accent); }
+
+  .clear-radio {
+    width: 14px; height: 14px;
+    border: 2px solid var(--muted);
+    border-radius: 50%;
+    flex-shrink: 0;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  .clear-col-name {
+    font-family: 'Fraunces', serif;
+    font-size: 16px;
+    font-weight: 500;
+    flex: 1;
+  }
+
+  .clear-col-count {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .clear-col-option.selected .clear-col-count { color: var(--accent); }
+
+  .clear-col-option.all-option {
+    border-top: 2px solid var(--line);
+    margin-top: 4px;
+  }
+  .clear-col-option.all-option .clear-col-name { color: var(--accent); font-style: italic; }
 </style>
 </head>
 <body>
@@ -668,14 +827,7 @@
       </div>
 
       <table>
-        <thead>
-          <tr>
-            <th class="idx">#</th>
-            <th>Ad</th>
-            <th class="num">Not</th>
-            <th class="act"></th>
-          </tr>
-        </thead>
+        <thead id="thead"></thead>
         <tbody id="tbody"></tbody>
       </table>
 
@@ -711,6 +863,8 @@
       <div class="transcript" id="transcript">
         <span class="placeholder">Duyulan konuşma burada görünecek...</span>
       </div>
+
+      <div class="col-selector" id="colSelector"></div>
 
       <div class="lang-select" id="langSelect">
         <button class="lang-btn active" data-lang="tr-TR">TR</button>
@@ -771,6 +925,19 @@
     </div>
   </div>
 
+  <!-- Clear Grades Modal -->
+  <div id="clearModal" class="modal-overlay" style="display:none">
+    <div class="modal">
+      <div class="modal-label">Notları Temizle</div>
+      <h2>Hangi sütunu temizleyelim?</h2>
+      <div id="clearColList" class="clear-col-list"></div>
+      <div class="modal-actions">
+        <button class="ctrl" id="clearCancel">İptal</button>
+        <button class="ctrl primary" id="clearOk">Temizle</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Paste Names Modal -->
   <div id="pasteModal" class="modal-overlay" style="display:none">
     <div class="modal">
@@ -789,9 +956,12 @@
 <script>
 // ============ STATE ============
 const state = {
+  columns: [{ id: 'g1', name: 'Not 1' }],
+  nextColId: 2,
+  activeColId: 'g1',
   students: [
-    { name: 'Enes', grade: null },
-    { name: 'Alpaslan', grade: null },
+    { name: 'Enes', grades: { g1: null } },
+    { name: 'Alpaslan', grades: { g1: null } },
   ],
   listening: false,
   lang: 'tr-TR',
@@ -803,8 +973,32 @@ const state = {
 
 // ============ PERSISTENCE ============
 function saveState() {
-  try { localStorage.setItem('voiceGrader', JSON.stringify({ name: state.sessionName, students: state.students })); } catch(e) {}
+  try {
+    localStorage.setItem('voiceGrader', JSON.stringify({
+      name: state.sessionName,
+      students: state.students,
+      columns: state.columns,
+      nextColId: state.nextColId,
+      activeColId: state.activeColId,
+    }));
+  } catch(e) {}
   setDirty(true);
+}
+
+// Migrate old { name, grade } student objects to { name, grades: { g1: ... } }
+function migrateStudents(students, columns) {
+  return students.map(s => {
+    if (s.grades && typeof s.grades === 'object') {
+      // Already new format — ensure all column keys exist
+      const grades = {};
+      columns.forEach(c => { grades[c.id] = (c.id in s.grades) ? s.grades[c.id] : null; });
+      return { name: s.name, grades };
+    }
+    // Old format: single grade field
+    const grades = {};
+    columns.forEach((c, ci) => { grades[c.id] = ci === 0 && typeof s.grade === 'number' ? s.grade : null; });
+    return { name: s.name, grades };
+  });
 }
 
 function loadSavedState() {
@@ -812,12 +1006,25 @@ function loadSavedState() {
     const saved = localStorage.getItem('voiceGrader');
     if (saved) {
       const parsed = JSON.parse(saved);
+      // Legacy: bare array of students
       if (Array.isArray(parsed) && parsed.length) {
-        state.students = parsed; return true;
-      } else if (parsed && Array.isArray(parsed.students) && parsed.students.length) {
-        state.students = parsed.students;
-        if (parsed.name) state.sessionName = parsed.name;
+        state.columns = [{ id: 'g1', name: 'Not 1' }];
+        state.nextColId = 2;
+        state.activeColId = 'g1';
+        state.students = migrateStudents(parsed, state.columns);
         return true;
+      }
+      if (parsed && typeof parsed === 'object') {
+        if (Array.isArray(parsed.columns) && parsed.columns.length) {
+          state.columns = parsed.columns;
+          state.nextColId = parsed.nextColId || parsed.columns.length + 1;
+          state.activeColId = parsed.activeColId || parsed.columns[0].id;
+        }
+        if (Array.isArray(parsed.students) && parsed.students.length) {
+          state.students = migrateStudents(parsed.students, state.columns);
+          if (parsed.name) state.sessionName = parsed.name;
+          return true;
+        }
       }
     }
   } catch(e) {}
@@ -843,13 +1050,32 @@ function syncSessionNameInput() {
 }
 
 function buildSessionData() {
-  return { version: 1, name: state.sessionName, saved: new Date().toISOString(), students: state.students };
+  return {
+    version: 2,
+    name: state.sessionName,
+    saved: new Date().toISOString(),
+    students: state.students,
+    columns: state.columns,
+    nextColId: state.nextColId,
+  };
 }
 
 function applySessionData(data) {
-  if (Array.isArray(data.students)) state.students = data.students;
+  if (Array.isArray(data.columns) && data.columns.length) {
+    state.columns = data.columns;
+    state.nextColId = data.nextColId || data.columns.length + 1;
+    state.activeColId = data.activeColId || data.columns[0].id;
+  } else {
+    state.columns = [{ id: 'g1', name: 'Not 1' }];
+    state.nextColId = 2;
+    state.activeColId = 'g1';
+  }
+  if (Array.isArray(data.students)) {
+    state.students = migrateStudents(data.students, state.columns);
+  }
   if (data.name) { state.sessionName = data.name; syncSessionNameInput(); }
   render();
+  renderColSelector();
 }
 
 async function saveSession() {
@@ -909,10 +1135,14 @@ async function openSession() {
 function newSession() {
   if (state.dirty && !confirm('Kaydedilmemiş değişiklikler kaybolacak. Devam et?')) return;
   state.students = [];
+  state.columns = [{ id: 'g1', name: 'Not 1' }];
+  state.nextColId = 2;
+  state.activeColId = 'g1';
   state.sessionName = 'Untitled Session';
   state.fileHandle = null;
   syncSessionNameInput();
   render();
+  renderColSelector();
   setDirty(false);
   try { localStorage.removeItem('voiceGrader'); } catch(e) {}
   log('New session started', 'ok');
@@ -1038,41 +1268,151 @@ function parseUtterance(text, lang) {
   return { name: namePortion, grade };
 }
 
+// ============ COLUMN MANAGEMENT ============
+function addColumn() {
+  const id = 'g' + state.nextColId++;
+  const name = 'Not ' + state.columns.length + 1;
+  state.columns.push({ id, name });
+  state.students.forEach(s => { s.grades[id] = null; });
+  state.activeColId = id;
+  render();
+  renderColSelector();
+  saveState();
+}
+
+function removeColumn(colId) {
+  if (state.columns.length <= 1) {
+    log('En az bir sütun olmalı', 'warn');
+    return;
+  }
+  const col = state.columns.find(c => c.id === colId);
+  if (!col) return;
+
+  const hasGrades = state.students.some(s => s.grades[colId] !== null && s.grades[colId] !== undefined);
+  const promptMsg = hasGrades
+    ? `"${col.name}" sütununu silmek için sütun adını yazın:\n(Bu sütundaki tüm notlar silinecek!)`
+    : `"${col.name}" sütununu silmek için sütun adını yazın:`;
+
+  const typed = prompt(promptMsg);
+  if (typed === null) return; // cancelled
+  if (typed.trim() !== col.name) {
+    log(`Sütun adı eşleşmedi — silme iptal edildi`, 'warn');
+    return;
+  }
+
+  const idx = state.columns.findIndex(c => c.id === colId);
+  state.columns.splice(idx, 1);
+  state.students.forEach(s => { delete s.grades[colId]; });
+  if (state.activeColId === colId) {
+    state.activeColId = state.columns[Math.min(idx, state.columns.length - 1)].id;
+  }
+  render();
+  renderColSelector();
+  saveState();
+  log(`"${col.name}" sütunu silindi`, 'ok');
+}
+
+function renameColumn(colId, newName) {
+  const col = state.columns.find(c => c.id === colId);
+  if (!col || !newName) return;
+  col.name = newName;
+  // Only refresh the selector buttons — don't rebuild thead (would steal input focus)
+  renderColSelector();
+  saveState();
+}
+
 // ============ RENDER ============
 function render() {
+  // --- THEAD ---
+  const thead = document.getElementById('thead');
+  const headRow = document.createElement('tr');
+
+  headRow.innerHTML = `<th class="idx">#</th><th>Ad</th>`;
+
+  state.columns.forEach(col => {
+    const th = document.createElement('th');
+    th.className = 'grade-col num' + (col.id === state.activeColId ? ' col-active' : '');
+    th.dataset.colId = col.id;
+    th.innerHTML = `
+      <div class="col-header-inner">
+        <input class="col-name-input" data-col="${col.id}" value="${escapeHtml(col.name)}" title="Sütun adını düzenle" />
+        <button class="col-remove-btn" data-col="${col.id}" title="Sütunu sil">×</button>
+      </div>`;
+    headRow.appendChild(th);
+  });
+
+  const addTh = document.createElement('th');
+  addTh.className = 'col-add-th';
+  addTh.innerHTML = `<button class="col-add-th-btn" title="Sütun ekle">+</button>`;
+  headRow.appendChild(addTh);
+
+  const actTh = document.createElement('th');
+  actTh.className = 'act';
+  headRow.appendChild(actTh);
+
+  thead.innerHTML = '';
+  thead.appendChild(headRow);
+
+  // Wire column header controls
+  thead.querySelectorAll('.col-name-input').forEach(inp => {
+    // Prevent the th click from firing when user clicks directly into the input
+    inp.onclick = (e) => e.stopPropagation();
+    inp.onkeydown = (e) => { if (e.key === 'Enter') inp.blur(); else if (e.key === 'Escape') { inp.value = state.columns.find(c => c.id === inp.dataset.col)?.name || inp.value; inp.blur(); } };
+    inp.onblur = () => {
+      const newName = inp.value.trim();
+      if (newName) renameColumn(inp.dataset.col, newName);
+      else inp.value = state.columns.find(c => c.id === inp.dataset.col)?.name || '';
+    };
+  });
+  // Clicking the th (outside the input) selects the column — uses lightweight CSS update
+  thead.querySelectorAll('th.grade-col').forEach(th => {
+    th.style.cursor = 'pointer';
+    th.onclick = () => {
+      state.activeColId = th.dataset.colId;
+      // Update active class on all grade-col headers without full re-render
+      thead.querySelectorAll('th.grade-col').forEach(t => t.classList.toggle('col-active', t.dataset.colId === state.activeColId));
+      // Update active class on all grade td cells
+      document.querySelectorAll('td.grade').forEach(td => td.classList.toggle('col-active', td.dataset.col === state.activeColId));
+      renderColSelector();
+      updateStats();
+    };
+  });
+  thead.querySelectorAll('.col-remove-btn').forEach(btn => {
+    btn.onclick = (e) => { e.stopPropagation(); removeColumn(btn.dataset.col); };
+  });
+  thead.querySelector('.col-add-th-btn').onclick = addColumn;
+
+  // --- TBODY ---
   const tbody = document.getElementById('tbody');
   tbody.innerHTML = '';
+
   state.students.forEach((s, i) => {
     const tr = document.createElement('tr');
     tr.dataset.idx = i;
 
-    const gradeClass = s.grade === null ? '' :
-      s.grade >= 85 ? 'high' : s.grade >= 60 ? 'mid' : 'low';
-
-    tr.innerHTML = `
+    let cells = `
       <td class="idx">${String(i+1).padStart(2,'0')}</td>
-      <td class="name">${escapeHtml(s.name)}</td>
-      <td class="grade" data-edit="${i}" title="Click to edit">${
-        s.grade === null
-          ? '<span class="empty">—</span>'
-          : `<span class="grade-badge ${gradeClass}">${s.grade}</span>`
-      }</td>
-      <td class="act"><button class="row-del" data-idx="${i}" title="Remove">×</button></td>
-    `;
+      <td class="name">${escapeHtml(s.name)}</td>`;
+
+    state.columns.forEach(col => {
+      const g = s.grades[col.id];
+      const gradeClass = g === null ? '' : g >= 85 ? 'high' : g >= 60 ? 'mid' : 'low';
+      const isActive = col.id === state.activeColId ? ' col-active' : '';
+      cells += `
+        <td class="grade${isActive}" data-edit="${i}" data-col="${col.id}" title="Düzenlemek için tıkla">${
+          g === null
+            ? '<span class="empty">—</span>'
+            : `<span class="grade-badge ${gradeClass}">${g}</span>`
+        }</td>`;
+    });
+
+    cells += `<td class="act"><button class="row-del" data-idx="${i}" title="Sil">×</button></td>`;
+    tr.innerHTML = cells;
     tbody.appendChild(tr);
   });
 
-  // Stats
-  const done = state.students.filter(s => s.grade !== null);
-  document.getElementById('statTotal').textContent = state.students.length;
-  document.getElementById('statDone').textContent = done.length;
-  document.getElementById('statAvg').textContent = done.length
-    ? (done.reduce((a, b) => a + b.grade, 0) / done.length).toFixed(1)
-    : '—';
-  document.getElementById('counter').textContent = `${done.length} / ${state.students.length} graded`;
-
   // Wire delete buttons
-  document.querySelectorAll('.row-del').forEach(btn => {
+  tbody.querySelectorAll('.row-del').forEach(btn => {
     btn.onclick = () => {
       const idx = parseInt(btn.dataset.idx);
       state.students.splice(idx, 1);
@@ -1082,11 +1422,12 @@ function render() {
   });
 
   // Wire click-to-edit on grade cells
-  document.querySelectorAll('td.grade[data-edit]').forEach(td => {
+  tbody.querySelectorAll('td.grade[data-edit]').forEach(td => {
     td.style.cursor = 'pointer';
     td.onclick = () => {
       const idx = parseInt(td.dataset.edit);
-      const cur = state.students[idx].grade;
+      const colId = td.dataset.col;
+      const cur = state.students[idx].grades[colId];
       const inp = document.createElement('input');
       inp.type = 'number'; inp.min = 0; inp.max = 100; inp.step = 1;
       inp.value = cur ?? '';
@@ -1096,10 +1437,10 @@ function render() {
       inp.focus(); inp.select();
       const commit = () => {
         const raw = inp.value.trim();
-        if (raw === '') { state.students[idx].grade = null; }
+        if (raw === '') { state.students[idx].grades[colId] = null; }
         else {
           const v = parseFloat(raw);
-          if (!isNaN(v) && v >= 0 && v <= 100) state.students[idx].grade = Math.round(v * 10) / 10;
+          if (!isNaN(v) && v >= 0 && v <= 100) state.students[idx].grades[colId] = Math.round(v * 10) / 10;
         }
         saveState();
         render();
@@ -1108,6 +1449,48 @@ function render() {
       inp.onkeydown = (e) => { if (e.key === 'Enter') inp.blur(); else if (e.key === 'Escape') render(); };
     };
   });
+
+  // --- STATS (active column) ---
+  updateStats();
+}
+
+function updateStats() {
+  const activeCol = state.columns.find(c => c.id === state.activeColId) || state.columns[0];
+  const done = state.students.filter(s => s.grades[state.activeColId] !== null && s.grades[state.activeColId] !== undefined);
+  document.getElementById('statTotal').textContent = state.students.length;
+  document.getElementById('statDone').textContent = done.length;
+  document.getElementById('statAvg').textContent = done.length
+    ? (done.reduce((a, s) => a + s.grades[state.activeColId], 0) / done.length).toFixed(1)
+    : '—';
+  document.getElementById('counter').textContent =
+    `${done.length} / ${state.students.length} · ${escapeHtml(activeCol ? activeCol.name : '')}`;
+}
+
+function renderColSelector() {
+  const container = document.getElementById('colSelector');
+  container.innerHTML = '';
+
+  state.columns.forEach(col => {
+    const btn = document.createElement('button');
+    btn.className = 'col-btn' + (col.id === state.activeColId ? ' active' : '');
+    btn.textContent = col.name;
+    btn.title = `Mikrofon → ${col.name}`;
+    btn.onclick = () => {
+      state.activeColId = col.id;
+      // Lightweight update — avoid full re-render so no focus is stolen
+      document.querySelectorAll('th.grade-col').forEach(th => th.classList.toggle('col-active', th.dataset.colId === col.id));
+      document.querySelectorAll('td.grade').forEach(td => td.classList.toggle('col-active', td.dataset.col === col.id));
+      renderColSelector();
+      updateStats();
+    };
+    container.appendChild(btn);
+  });
+
+  const addBtn = document.createElement('button');
+  addBtn.className = 'col-add-btn';
+  addBtn.textContent = '+ Sütun Ekle';
+  addBtn.onclick = addColumn;
+  container.appendChild(addBtn);
 }
 
 function escapeHtml(s) {
@@ -1247,6 +1630,8 @@ function handleFinal(text, speechConfidence = 1) {
   }
 
   const student = state.students[match.index];
+  const colId = state.activeColId;
+  const currentGrade = student.grades[colId];
 
   // Compute combined confidence (0-1):
   //   match.score is 0 = perfect, ~0.45 = barely acceptable. Convert: matchConf = 1 - score/0.45
@@ -1263,10 +1648,10 @@ function handleFinal(text, speechConfidence = 1) {
   const isMedium = !isLow && overallConf < 0.75;
 
   // Overwriting an existing different grade always prompts (independent of confidence)
-  const isOverwrite = student.grade !== null && student.grade !== parsed.grade;
+  const isOverwrite = currentGrade !== null && currentGrade !== undefined && currentGrade !== parsed.grade;
 
   // Same grade said twice — skip
-  if (student.grade === parsed.grade) {
+  if (currentGrade === parsed.grade) {
     log(`${student.name} already has ${parsed.grade} (no change)`, 'ok');
     return;
   }
@@ -1290,14 +1675,17 @@ function fmtPct(v) {
 }
 
 function applyGrade(index, grade, confidence = 1) {
-  state.students[index].grade = grade;
+  const colId = state.activeColId;
+  const activeCol = state.columns.find(c => c.id === colId);
+  state.students[index].grades[colId] = grade;
   render();
   flashRow(index, confidence);
   saveState();
+  const colLabel = activeCol ? ` [${activeCol.name}]` : '';
   if (confidence < 0.75) {
-    log(`${state.students[index].name} → ${grade} · confidence ${fmtPct(confidence)}`, 'warn');
+    log(`${state.students[index].name}${colLabel} → ${grade} · confidence ${fmtPct(confidence)}`, 'warn');
   } else {
-    log(`${state.students[index].name} → ${grade}`, 'ok');
+    log(`${state.students[index].name}${colLabel} → ${grade}`, 'ok');
   }
 }
 
@@ -1323,9 +1711,12 @@ function resumeRecognitionAfterModal() {
 function showOverwriteConfirm(student, newGrade, index, conf = null) {
   pauseRecognitionForModal();
   const modal = document.getElementById('confirmModal');
-  document.getElementById('confirmTitle').textContent = `Overwrite ${student.name}'s grade?`;
+  const activeCol = state.columns.find(c => c.id === state.activeColId);
+  const colLabel = activeCol ? ` (${activeCol.name})` : '';
+  document.getElementById('confirmTitle').textContent = `Overwrite ${student.name}'s grade${colLabel}?`;
+  const currentGrade = student.grades[state.activeColId];
   let body =
-    `<strong>${escapeHtml(student.name)}</strong> already has a grade of <span class="old">${student.grade}</span>. ` +
+    `<strong>${escapeHtml(student.name)}</strong> already has a grade of <span class="old">${currentGrade}</span>. ` +
     `Replace it with <span class="new">${newGrade}</span>?`;
   if (conf && conf.overallConf < 0.75) {
     body += `<br><br><span class="conf-warn">⚠ Recognition confidence is only ${fmtPct(conf.overallConf)} — please verify.</span>`;
@@ -1442,7 +1833,9 @@ document.getElementById('addBtn').onclick = () => {
   const input = document.getElementById('newName');
   const v = input.value.trim();
   if (v) {
-    state.students.push({ name: v, grade: null });
+    const grades = {};
+    state.columns.forEach(c => { grades[c.id] = null; });
+    state.students.push({ name: v, grades });
     input.value = '';
     render();
     saveState();
@@ -1454,18 +1847,81 @@ document.getElementById('newName').addEventListener('keypress', (e) => {
 });
 
 document.getElementById('clearGradesBtn').onclick = () => {
-  const graded = state.students.filter(s => s.grade !== null).length;
-  if (graded === 0) {
-    log('No grades to clear', 'ok');
+  // Count grades per column
+  const counts = {};
+  state.columns.forEach(c => {
+    counts[c.id] = state.students.filter(s => s.grades[c.id] !== null && s.grades[c.id] !== undefined).length;
+  });
+  const totalGraded = Object.values(counts).reduce((a, b) => a + b, 0);
+
+  if (totalGraded === 0) {
+    log('Temizlenecek not yok', 'ok');
     return;
   }
-  if (!confirm(`This will erase ${graded} grade${graded === 1 ? '' : 's'}. Continue?`)) {
-    return;
+
+  // Build the column picker list
+  const list = document.getElementById('clearColList');
+  list.innerHTML = '';
+  let selectedColId = state.activeColId; // default to active column
+
+  const makeOption = (colId, label, count, extraClass = '') => {
+    const opt = document.createElement('div');
+    opt.className = 'clear-col-option' + (extraClass ? ' ' + extraClass : '') + (colId === selectedColId ? ' selected' : '');
+    opt.dataset.colId = colId;
+    opt.innerHTML = `
+      <div class="clear-radio"></div>
+      <span class="clear-col-name">${escapeHtml(label)}</span>
+      <span class="clear-col-count">${count} not</span>`;
+    opt.onclick = () => {
+      selectedColId = colId;
+      list.querySelectorAll('.clear-col-option').forEach(o => o.classList.toggle('selected', o.dataset.colId === colId));
+    };
+    list.appendChild(opt);
+  };
+
+  state.columns.forEach(c => makeOption(c.id, c.name, counts[c.id]));
+  if (state.columns.length > 1) {
+    makeOption('__all__', 'Tüm sütunlar', totalGraded, 'all-option');
   }
-  state.students.forEach(s => s.grade = null);
-  render();
-  saveState();
-  log('All grades cleared', 'ok');
+
+  const modal = document.getElementById('clearModal');
+  modal.style.display = 'grid';
+  pauseRecognitionForModal();
+
+  const okBtn = document.getElementById('clearOk');
+  const cancelBtn = document.getElementById('clearCancel');
+
+  const cleanup = () => {
+    modal.style.display = 'none';
+    okBtn.removeEventListener('click', onOk);
+    cancelBtn.removeEventListener('click', onCancel);
+    document.removeEventListener('keydown', onKey);
+    resumeRecognitionAfterModal();
+  };
+
+  const onOk = () => {
+    if (selectedColId === '__all__') {
+      state.students.forEach(s => state.columns.forEach(c => { s.grades[c.id] = null; }));
+      log('Tüm sütunların notları temizlendi', 'ok');
+    } else {
+      const col = state.columns.find(c => c.id === selectedColId);
+      state.students.forEach(s => { s.grades[selectedColId] = null; });
+      log(`"${col ? col.name : selectedColId}" sütununun notları temizlendi`, 'ok');
+    }
+    render();
+    saveState();
+    cleanup();
+  };
+
+  const onCancel = () => { log('Temizleme iptal edildi', 'ok'); cleanup(); };
+  const onKey = (e) => {
+    if (e.key === 'Enter') onOk();
+    else if (e.key === 'Escape') onCancel();
+  };
+
+  okBtn.addEventListener('click', onOk);
+  cancelBtn.addEventListener('click', onCancel);
+  document.addEventListener('keydown', onKey);
 };
 
 document.querySelectorAll('.lang-btn').forEach(btn => {
@@ -1484,47 +1940,43 @@ document.querySelectorAll('.lang-btn').forEach(btn => {
 // Copy for Excel — tab-separated, ready to paste into a sheet
 document.getElementById('copyBtn').onclick = async () => {
   const btn = document.getElementById('copyBtn');
-  // TSV: Excel pastes tab-separated text directly into adjacent cells
-  const tsv = state.students
-    .map(s => `${s.name}\t${s.grade ?? ''}`)
+  // TSV: header row + data rows with one column per grade column
+  const header = ['Ad', ...state.columns.map(c => c.name)].join('\t');
+  const dataRows = state.students
+    .map(s => [s.name, ...state.columns.map(c => s.grades[c.id] ?? '')].join('\t'))
     .join('\n');
+  const tsv = header + '\n' + dataRows;
+
+  const onSuccess = () => {
+    btn.textContent = '✓ Kopyalandı — Excel\'e yapıştırın';
+    btn.classList.add('copied');
+    log(`Copied ${state.students.length} rows (${state.columns.length} column(s)) to clipboard`, 'ok');
+    setTimeout(() => { btn.textContent = '📋 Excel\'e Kopyala'; btn.classList.remove('copied'); }, 2200);
+  };
 
   try {
     await navigator.clipboard.writeText(tsv);
-    btn.textContent = '✓ Copied — paste into Excel';
-    btn.classList.add('copied');
-    log(`Copied ${state.students.length} rows to clipboard`, 'ok');
-    setTimeout(() => {
-      btn.textContent = '📋 Copy for Excel';
-      btn.classList.remove('copied');
-    }, 2200);
+    onSuccess();
   } catch (err) {
-    // Fallback for older browsers / non-HTTPS contexts
     const ta = document.createElement('textarea');
     ta.value = tsv;
     ta.style.position = 'fixed';
     ta.style.opacity = '0';
     document.body.appendChild(ta);
     ta.select();
-    try {
-      document.execCommand('copy');
-      btn.textContent = '✓ Copied — paste into Excel';
-      btn.classList.add('copied');
-      log(`Copied ${state.students.length} rows to clipboard`, 'ok');
-      setTimeout(() => {
-        btn.textContent = '📋 Copy for Excel';
-        btn.classList.remove('copied');
-      }, 2200);
-    } catch (e) {
-      log('Copy failed — try Export CSV instead', 'err');
-    }
+    try { document.execCommand('copy'); onSuccess(); }
+    catch (e) { log('Copy failed — try Export CSV instead', 'err'); }
     document.body.removeChild(ta);
   }
 };
 
 // CSV import / export
 document.getElementById('exportBtn').onclick = () => {
-  const rows = [['Name', 'Grade'], ...state.students.map(s => [s.name, s.grade ?? ''])];
+  const headers = ['Ad', ...state.columns.map(c => c.name)];
+  const rows = [
+    headers,
+    ...state.students.map(s => [s.name, ...state.columns.map(c => s.grades[c.id] ?? '')]),
+  ];
   const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob = new Blob(["\uFEFF" + csv], {type: 'text/csv;charset=utf-8'});
   const url = URL.createObjectURL(blob);
@@ -1558,7 +2010,11 @@ function loadNames(names, source) {
     return false;
   }
   if (state.students.length === 0) {
-    state.students = names.map(name => ({ name, grade: null }));
+    state.students = names.map(name => {
+      const grades = {};
+      state.columns.forEach(c => { grades[c.id] = null; });
+      return { name, grades };
+    });
     render();
     saveState();
     log(`Loaded ${names.length} names from ${source}`, 'ok');
@@ -1592,7 +2048,11 @@ function showImportModeModal(names, source) {
     resumeRecognitionAfterModal();
   };
   const onReplace = () => {
-    state.students = names.map(name => ({ name, grade: null }));
+    state.students = names.map(name => {
+      const grades = {};
+      state.columns.forEach(c => { grades[c.id] = null; });
+      return { name, grades };
+    });
     render(); saveState();
     log(`Replaced list with ${names.length} names from ${source}`, 'ok');
     cleanup();
@@ -1600,7 +2060,11 @@ function showImportModeModal(names, source) {
   const onAppend = () => {
     const existing = new Set(state.students.map(s => s.name.toLowerCase()));
     const toAdd = names.filter(n => !existing.has(n.toLowerCase()));
-    state.students.push(...toAdd.map(name => ({ name, grade: null })));
+    state.students.push(...toAdd.map(name => {
+      const grades = {};
+      state.columns.forEach(c => { grades[c.id] = null; });
+      return { name, grades };
+    }));
     render(); saveState();
     const skipped = names.length - toAdd.length;
     if (skipped) log(`Appended ${toAdd.length} names (${skipped} duplicate(s) skipped)`, 'warn');
@@ -1708,6 +2172,7 @@ document.addEventListener('keydown', (e) => {
     if (document.getElementById('confirmModal').style.display !== 'none') return;
     if (document.getElementById('pasteModal').style.display !== 'none') return;
     if (document.getElementById('importModeModal').style.display !== 'none') return;
+    if (document.getElementById('clearModal').style.display !== 'none') return;
     e.preventDefault();
     state.listening ? stopListening() : startListening();
   }
@@ -1716,6 +2181,7 @@ document.addEventListener('keydown', (e) => {
 // ============ INIT ============
 const hadCrashData = loadSavedState();
 render();
+renderColSelector();
 syncSessionNameInput();
 setDirty(hadCrashData); // crash-recovery data is unsaved relative to any file
 state.recognition = initRecognition();
