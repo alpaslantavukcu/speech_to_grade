@@ -971,6 +971,40 @@ const state = {
   dirty: false,
 };
 
+// ============ AUDIO FEEDBACK ============
+let _audioCtx = null;
+function getAudioCtx() {
+  if (!_audioCtx || _audioCtx.state === 'closed') {
+    _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  // Resume if suspended (browser autoplay policy)
+  if (_audioCtx.state === 'suspended') _audioCtx.resume();
+  return _audioCtx;
+}
+
+function playWarningSound() {
+  try {
+    const ctx = getAudioCtx();
+    const t = ctx.currentTime;
+    // Two descending tones: a quick "doo-doo" error signal
+    const freqs = [440, 300];
+    freqs.forEach((freq, i) => {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      const start = t + i * 0.13;
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.25, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.12);
+      osc.start(start);
+      osc.stop(start + 0.13);
+    });
+  } catch(e) { /* audio not available */ }
+}
+
 // ============ PERSISTENCE ============
 function saveState() {
   try {
@@ -1546,6 +1580,42 @@ function log(message, type = 'ok') {
   while (logEl.children.length > 8) logEl.removeChild(logEl.lastChild);
 }
 
+// ============ PENDING NAME BUFFER ============
+// Holds the last unmatched student name spoken (without a grade) so that a
+// follow-up utterance containing only a number can complete the pair.
+const pendingName = {
+  studentIndex: null,   // index into state.students
+  speechConfidence: 1,  // confidence of the name recognition
+  matchScore: 0,        // levenshtein match score
+  timerId: null,        // setTimeout handle for auto-expiry
+};
+const PENDING_NAME_TTL_MS = 4000; // 4 seconds to say the grade
+
+function setPendingName(studentIndex, speechConfidence, matchScore) {
+  clearPendingName();
+  pendingName.studentIndex = studentIndex;
+  pendingName.speechConfidence = speechConfidence;
+  pendingName.matchScore = matchScore;
+  pendingName.timerId = setTimeout(() => {
+    if (pendingName.studentIndex !== null) {
+      playWarningSound();
+      log(`"${state.students[pendingName.studentIndex].name}" için not bekleniyor… (zaman aşımı)`, 'warn');
+      clearPendingName();
+    }
+  }, PENDING_NAME_TTL_MS);
+
+  const name = state.students[studentIndex].name;
+  log(`"${name}" duyuldu — notu söyleyin (${PENDING_NAME_TTL_MS / 1000}s içinde)`, 'warn');
+}
+
+function clearPendingName() {
+  if (pendingName.timerId !== null) clearTimeout(pendingName.timerId);
+  pendingName.studentIndex = null;
+  pendingName.speechConfidence = 1;
+  pendingName.matchScore = 0;
+  pendingName.timerId = null;
+}
+
 // ============ SPEECH RECOGNITION ============
 function initRecognition() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1611,62 +1681,84 @@ function handleFinal(text, speechConfidence = 1) {
 
   if (parsed.grade === null) {
     if (parsed.error === 'out_of_range') {
+      playWarningSound();
       log(`Grade out of range in: "${text}"`, 'err');
+      clearPendingName();
+      return;
+    }
+    // No grade in this utterance — check if it's a student name alone
+    const nameMatch = findBestStudent(parsed.name || text);
+    if (nameMatch) {
+      // Store this as a pending name; wait for the next utterance to provide the grade
+      setPendingName(nameMatch.index, speechConfidence, nameMatch.score);
     } else {
+      playWarningSound();
       log(`No grade detected: "${text}"`, 'err');
+      clearPendingName();
     }
     return;
   }
 
   if (!parsed.name) {
-    log(`No name in: "${text}"`, 'err');
+    // Grade only (e.g. "72") — try to pair with a buffered pending name
+    if (pendingName.studentIndex !== null) {
+      const idx = pendingName.studentIndex;
+      const combinedSpeechConf = Math.min(speechConfidence, pendingName.speechConfidence);
+      const matchConf = Math.max(0, 1 - (pendingName.matchScore / 0.45));
+      const overallConf = Math.min(combinedSpeechConf, matchConf);
+      clearPendingName();
+      applyGradeFromMatch(idx, parsed.grade, overallConf);
+    } else {
+      playWarningSound();
+      log(`No name in: "${text}"`, 'err');
+    }
     return;
   }
 
   const match = findBestStudent(parsed.name);
   if (!match) {
+    playWarningSound();
     log(`No match for "${parsed.name}" → ${parsed.grade}`, 'err');
+    clearPendingName();
     return;
   }
 
-  const student = state.students[match.index];
+  // Clear any pending name buffer now that we have a full "name + grade" utterance
+  clearPendingName();
+
+  const matchConf = Math.max(0, 1 - (match.score / 0.45));
+  const overallConf = Math.min(speechConfidence, matchConf);
+  applyGradeFromMatch(match.index, parsed.grade, overallConf, speechConfidence, text);
+}
+
+// Shared post-match logic: confidence checks, overwrite prompt, low-confidence prompt, apply
+function applyGradeFromMatch(studentIndex, grade, overallConf, speechConfidence = 1, originalText = '') {
+  const student = state.students[studentIndex];
   const colId = state.activeColId;
   const currentGrade = student.grades[colId];
 
-  // Compute combined confidence (0-1):
-  //   match.score is 0 = perfect, ~0.45 = barely acceptable. Convert: matchConf = 1 - score/0.45
-  //   speechConfidence is the API value (0-1).
-  // We take the lower of the two — both must be reasonable.
-  const matchConf = Math.max(0, 1 - (match.score / 0.45));
-  const overallConf = Math.min(speechConfidence, matchConf);
-
-  // Thresholds:
-  //   >= 0.75 → high  (apply silently)
-  //   0.55 - 0.75 → medium (apply but log a soft warning)
-  //   < 0.55 → low (ask user to confirm via modal)
   const isLow = overallConf < 0.55;
-  const isMedium = !isLow && overallConf < 0.75;
 
-  // Overwriting an existing different grade always prompts (independent of confidence)
-  const isOverwrite = currentGrade !== null && currentGrade !== undefined && currentGrade !== parsed.grade;
+  // Overwriting an existing different grade always prompts
+  const isOverwrite = currentGrade !== null && currentGrade !== undefined && currentGrade !== grade;
 
   // Same grade said twice — skip
-  if (currentGrade === parsed.grade) {
-    log(`${student.name} already has ${parsed.grade} (no change)`, 'ok');
+  if (currentGrade === grade) {
+    log(`${student.name} already has ${grade} (no change)`, 'ok');
     return;
   }
 
   if (isOverwrite) {
-    showOverwriteConfirm(student, parsed.grade, match.index, { speechConfidence, matchConf, overallConf });
+    showOverwriteConfirm(student, grade, studentIndex, { speechConfidence, matchConf: overallConf, overallConf });
     return;
   }
 
   if (isLow) {
-    showLowConfidenceConfirm(student, parsed.grade, match.index, text, { speechConfidence, matchConf, overallConf });
+    showLowConfidenceConfirm(student, grade, studentIndex, originalText || student.name, { speechConfidence, matchConf: overallConf, overallConf });
     return;
   }
 
-  applyGrade(match.index, parsed.grade, overallConf);
+  applyGrade(studentIndex, grade, overallConf);
 }
 
 // Format confidence as a percentage for display
@@ -1817,6 +1909,7 @@ function stopListening() {
   if (state.recognition) {
     try { state.recognition.stop(); } catch(e) {}
   }
+  clearPendingName();
   document.getElementById('micBtn').classList.remove('listening');
   document.getElementById('recDot').classList.remove('live');
   setStatus('Tap to start listening');
