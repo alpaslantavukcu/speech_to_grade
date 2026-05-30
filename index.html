@@ -1798,6 +1798,70 @@ function log(message, type = 'ok') {
   while (logEl.children.length > 8) logEl.removeChild(logEl.lastChild);
 }
 
+// ============ PENDING "ALL GRADES" BUFFER (Hepsi mode) ============
+const pendingAll = {
+  studentIndex: null,
+  gradesCollected: [],
+  speechConfidences: [],
+  matchScore: 0,
+  timerId: null,
+};
+const PENDING_ALL_TTL_MS = 4000;
+
+function setPendingAll(studentIndex, gradesCollected, speechConfidence, matchScore) {
+  if (pendingAll.timerId !== null) clearTimeout(pendingAll.timerId);
+  pendingAll.studentIndex = studentIndex;
+  pendingAll.gradesCollected = gradesCollected.slice();
+  pendingAll.speechConfidences = [speechConfidence];
+  pendingAll.matchScore = matchScore;
+  const student = state.students[studentIndex];
+  const remaining = state.columns.length - gradesCollected.length;
+  log(`"${student.name}" duyuldu — ${remaining} not daha söyleyin (${PENDING_ALL_TTL_MS / 1000}s içinde)`, 'warn');
+  pendingAll.timerId = setTimeout(() => {
+    if (pendingAll.studentIndex !== null) {
+      playWarningSound();
+      log(`"${state.students[pendingAll.studentIndex].name}" için not bekleniyor… (zaman aşımı)`, 'warn');
+      clearPendingAll();
+    }
+  }, PENDING_ALL_TTL_MS);
+}
+
+function clearPendingAll() {
+  if (pendingAll.timerId !== null) clearTimeout(pendingAll.timerId);
+  pendingAll.studentIndex = null;
+  pendingAll.gradesCollected = [];
+  pendingAll.speechConfidences = [];
+  pendingAll.matchScore = 0;
+  pendingAll.timerId = null;
+}
+
+function resetPendingAllTimer() {
+  if (pendingAll.timerId !== null) clearTimeout(pendingAll.timerId);
+  pendingAll.timerId = setTimeout(() => {
+    if (pendingAll.studentIndex !== null) {
+      playWarningSound();
+      log(`"${state.students[pendingAll.studentIndex].name}" için not bekleniyor… (zaman aşımı)`, 'warn');
+      clearPendingAll();
+    }
+  }, PENDING_ALL_TTL_MS);
+}
+
+// Parse a continuation utterance (grades only, no name). May start with artı/plus/+.
+// Returns array of grades, [] for separator-only input, null on parse error.
+function parseContinuationGrades(text, lang) {
+  const stripped = text.trim().replace(/^(?:art[ıi]|plus|\+)\s*/i, '').trim();
+  if (!stripped) return [];
+  const segments = stripped.split(GRADE_SEPARATOR_RE).map(s => s.trim()).filter(Boolean);
+  const grades = [];
+  for (const seg of segments) {
+    const v = parseGradeSegment(seg, lang);
+    if (v === null || v === undefined) return null;
+    if (v < 0 || v > 100) return null;
+    grades.push(v);
+  }
+  return grades;
+}
+
 // ============ PENDING NAME BUFFER ============
 // Holds the last unmatched student name spoken (without a grade) so that a
 // follow-up utterance containing only a number can complete the pair.
@@ -2016,10 +2080,63 @@ function applyGrade(index, grade, confidence = 1) {
 
 // ============ "HEPSI" MODE HANDLERS ============
 function handleFinalAll(text, speechConfidence = 1) {
+  // Continuation mode: pending student awaiting more grades
+  if (pendingAll.studentIndex !== null) {
+    const contGrades = parseContinuationGrades(text, state.lang);
+
+    if (contGrades === null) {
+      playWarningSound();
+      log(`Not algılanamadı: "${text}" — önceki giriş iptal edildi`, 'err');
+      clearPendingAll();
+      return;
+    }
+
+    if (contGrades.length === 0) {
+      // Separator-only utterance ("artı" alone) — reset timer and keep waiting
+      resetPendingAllTimer();
+      return;
+    }
+
+    pendingAll.gradesCollected.push(...contGrades);
+    pendingAll.speechConfidences.push(speechConfidence);
+    const collected = pendingAll.gradesCollected.length;
+    const total = state.columns.length;
+
+    if (collected === total) {
+      const studentIndex = pendingAll.studentIndex;
+      const grades = pendingAll.gradesCollected.slice();
+      const matchScore = pendingAll.matchScore;
+      const minSpeechConf = Math.min(...pendingAll.speechConfidences);
+      clearPendingAll();
+      const matchConf = Math.max(0, 1 - (matchScore / 0.45));
+      const overallConf = Math.min(minSpeechConf, matchConf);
+      applyGradesAll(studentIndex, grades, overallConf, minSpeechConf, text);
+    } else if (collected > total) {
+      playWarningSound();
+      log(`Çok fazla not: ${collected} girildi ama ${total} sütun var`, 'err');
+      clearPendingAll();
+    } else {
+      resetPendingAllTimer();
+      const student = state.students[pendingAll.studentIndex];
+      const remaining = total - collected;
+      log(`"${student.name}" [${pendingAll.gradesCollected.join(', ')}] — ${remaining} not daha söyleyin`, 'warn');
+    }
+    return;
+  }
+
+  // Normal handling (no pending student)
   const parsed = parseUtteranceMulti(text, state.lang);
   if (!parsed) return;
 
   if (!parsed.grades) {
+    if (parsed.name) {
+      // Name only — try to match student and wait for grades
+      const match = findBestStudent(parsed.name);
+      if (match) {
+        setPendingAll(match.index, [], speechConfidence, match.score);
+        return;
+      }
+    }
     playWarningSound();
     if (parsed.error === 'out_of_range') log(`Not aralık dışı: "${text}"`, 'err');
     else log(`Not algılanmadı: "${text}"`, 'err');
@@ -2032,13 +2149,6 @@ function handleFinalAll(text, speechConfidence = 1) {
     return;
   }
 
-  // Require exactly one grade per column — reject otherwise.
-  if (parsed.grades.length !== state.columns.length) {
-    playWarningSound();
-    log(`${parsed.grades.length} not söylendi ama ${state.columns.length} sütun var — "${text}"`, 'err');
-    return;
-  }
-
   const match = findBestStudent(parsed.name);
   if (!match) {
     playWarningSound();
@@ -2046,9 +2156,18 @@ function handleFinalAll(text, speechConfidence = 1) {
     return;
   }
 
-  const matchConf = Math.max(0, 1 - (match.score / 0.45));
-  const overallConf = Math.min(speechConfidence, matchConf);
-  applyGradesAll(match.index, parsed.grades, overallConf, speechConfidence, text);
+  if (parsed.grades.length === state.columns.length) {
+    // All grades in one utterance — proceed immediately
+    const matchConf = Math.max(0, 1 - (match.score / 0.45));
+    const overallConf = Math.min(speechConfidence, matchConf);
+    applyGradesAll(match.index, parsed.grades, overallConf, speechConfidence, text);
+  } else if (parsed.grades.length < state.columns.length) {
+    // Partial grades — store and wait for the rest
+    setPendingAll(match.index, parsed.grades, speechConfidence, match.score);
+  } else {
+    playWarningSound();
+    log(`${parsed.grades.length} not söylendi ama ${state.columns.length} sütun var — "${text}"`, 'err');
+  }
 }
 
 function applyGradesAll(studentIndex, grades, overallConf, speechConfidence = 1, originalText = '') {
@@ -2274,6 +2393,7 @@ function stopListening() {
     try { state.recognition.stop(); } catch(e) {}
   }
   clearPendingName();
+  clearPendingAll();
   document.getElementById('micBtn').classList.remove('listening');
   document.getElementById('recDot').classList.remove('live');
   setStatus('Tap to start listening');
