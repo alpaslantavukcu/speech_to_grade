@@ -896,6 +896,8 @@
     <code>"İsim + not"</code> şeklinde söyleyin:<br>
     → <code>"Enes 85"</code>  ·  <code>"Alp doksan iki"</code>  ·  <code>"Püren seksen beş aldı"</code><br>
     → İngilizce (EN seçili iken): <code>"Enes 85"</code>  ·  <code>"Alp got 92"</code><br>
+    Birden çok sütun varken <code>Hepsi</code> seçeneğini açıp notları <code>artı</code> / <code>plus</code> ile ayırın:<br>
+    → <code>"Enes on beş artı yirmi beş"</code>  ·  <code>"Enes fifteen plus twenty"</code> (her sütuna bir not)<br>
     Mikrofon açık kalır — isimleri arka arkaya söyleyebilirsiniz. Durdurmak için tekrar tıklayın.<br>
     <code>Boşluk</code> → mikrofon aç/kapat &nbsp;·&nbsp; Not hücresine tıklayın → el ile düzenleyin
   </div>
@@ -1175,6 +1177,7 @@ function applySessionData(data) {
     state.students = migrateStudents(data.students, state.columns);
   }
   if (data.name) { state.sessionName = data.name; syncSessionNameInput(); }
+  normalizeActiveCol();
   undoStack.length = 0;
   updateUndoBtn();
   render();
@@ -1373,11 +1376,113 @@ function parseUtterance(text, lang) {
   return { name: namePortion, grade };
 }
 
+// ============ "HEPSI" (ALL COLUMNS) MODE ============
+// Sentinel value for state.activeColId meaning "dictate one grade per column".
+const ALL_COLS = '__all__';
+
+function assert(cond, msg) {
+  if (!cond) throw new Error('Assertion failed: ' + (msg || ''));
+}
+
+function isColActive(colId) {
+  return state.activeColId === ALL_COLS || state.activeColId === colId;
+}
+
+// Detects a multi-grade separator ("artı"/"plus"/"+") — only meaningful in "Hepsi" mode.
+const GRADE_SEPARATOR_RE = /\s+(?:art[ıi]|plus)\s+|\s*\+\s*/i;
+function hasGradeSeparator(text) {
+  assert(typeof text === 'string', 'hasGradeSeparator expects a string');
+  return GRADE_SEPARATOR_RE.test(text);
+}
+
+// Strip filler words shared by parseUtterance — kept local to avoid touching the
+// single-column parser.
+function stripFillers(name) {
+  assert(typeof name === 'string', 'stripFillers expects a string');
+  return name.replace(/\b(got|scored|made|aldı|puan|al?dı|sacó|hat|bekam|a obtenu|note)\b/gi, '').trim();
+}
+
+// Parse a pure-number segment (e.g. "yirmi beş", "fifteen", "85") → number | null.
+function parseGradeSegment(text, lang) {
+  assert(typeof text === 'string', 'parseGradeSegment expects a string');
+  const t = text.trim();
+  if (!t) return null;
+  const dm = t.match(/(\d{1,3}(?:[.,]\d+)?)/);
+  if (dm) return parseFloat(dm[1].replace(',', '.'));
+  return parseNumberFromWords(t, lang);
+}
+
+// Split "<name...> <number-words/digits>" into { name, grade }. Greedily grabs the
+// LONGEST trailing run of number tokens so "Enes on beş" → name "Enes", grade 15.
+function splitTrailingNumber(text, lang) {
+  assert(typeof text === 'string', 'splitTrailingNumber expects a string');
+  const lookup = numberWords[lang] || numberWords['tr-TR'];
+  const original = text.trim();
+  if (!original) return { name: '', grade: null };
+
+  // Trailing digits, e.g. "Enes 85"
+  const dm = original.match(/^(.*?)\s*(\d{1,3}(?:[.,]\d+)?)\s*$/);
+  if (dm) return { name: dm[1].trim(), grade: parseFloat(dm[2].replace(',', '.')) };
+
+  const tokens = original.split(/\s+/);
+  const isNumTok = (tok) => tok.toLowerCase().replace(/[.,!?-]/g, '') in lookup;
+  let i = tokens.length;
+  while (i > 0 && isNumTok(tokens[i - 1])) i--;
+  if (i === tokens.length) return { name: original, grade: null }; // no trailing number
+
+  const grade = parseNumberFromWords(tokens.slice(i).join(' '), lang);
+  return { name: tokens.slice(0, i).join(' '), grade };
+}
+
+// Parse "<name> g1 (artı|plus) g2 (artı|plus) g3 ..." into { name, grades, error }.
+// grades is null when parsing fails; error describes why.
+function parseUtteranceMulti(text, lang) {
+  assert(typeof text === 'string', 'parseUtteranceMulti expects a string');
+  const original = text.trim();
+  if (!original) return null;
+
+  const segments = original
+    .split(GRADE_SEPARATOR_RE)
+    .map(s => s.trim())
+    .filter(Boolean);
+  if (!segments.length) return null;
+
+  const first = splitTrailingNumber(segments[0], lang);
+  const name = stripFillers(first.name || '');
+  const grades = [];
+
+  if (first.grade === null || first.grade === undefined) return { name, grades: null, error: 'no_grade' };
+  if (first.grade < 0 || first.grade > 100) return { name, grades: null, error: 'out_of_range' };
+  grades.push(first.grade);
+
+  for (let k = 1; k < segments.length; k++) {
+    const v = parseGradeSegment(segments[k], lang);
+    if (v === null || v === undefined) return { name, grades: null, error: 'parse' };
+    if (v < 0 || v > 100) return { name, grades: null, error: 'out_of_range' };
+    grades.push(v);
+  }
+
+  assert(grades.length === segments.length, 'one grade expected per segment');
+  return { name, grades };
+}
+
+// Keep state.activeColId pointing at something valid (a real column or ALL_COLS
+// only when 2+ columns exist).
+function normalizeActiveCol() {
+  if (state.activeColId === ALL_COLS) {
+    if (state.columns.length < 2) state.activeColId = state.columns[0] ? state.columns[0].id : ALL_COLS;
+    return;
+  }
+  if (!state.columns.some(c => c.id === state.activeColId)) {
+    state.activeColId = state.columns[0] ? state.columns[0].id : ALL_COLS;
+  }
+}
+
 // ============ COLUMN MANAGEMENT ============
 function addColumn() {
   pushUndo();
   const id = 'g' + state.nextColId++;
-  const name = 'Not ' + state.columns.length + 1;
+  const name = 'Not ' + (state.columns.length + 1);
   state.columns.push({ id, name });
   state.students.forEach(s => { s.grades[id] = null; });
   state.activeColId = id;
@@ -1413,6 +1518,7 @@ function removeColumn(colId) {
   if (state.activeColId === colId) {
     state.activeColId = state.columns[Math.min(idx, state.columns.length - 1)].id;
   }
+  normalizeActiveCol(); // drop "Hepsi" if we're down to a single column
   render();
   renderColSelector();
   saveState();
@@ -1439,7 +1545,7 @@ function render() {
 
   state.columns.forEach(col => {
     const th = document.createElement('th');
-    th.className = 'grade-col num' + (col.id === state.activeColId ? ' col-active' : '');
+    th.className = 'grade-col num' + (isColActive(col.id) ? ' col-active' : '');
     th.dataset.colId = col.id;
     th.innerHTML = `
       <div class="col-header-inner">
@@ -1476,13 +1582,7 @@ function render() {
   thead.querySelectorAll('th.grade-col').forEach(th => {
     th.style.cursor = 'pointer';
     th.onclick = () => {
-      state.activeColId = th.dataset.colId;
-      // Update active class on all grade-col headers without full re-render
-      thead.querySelectorAll('th.grade-col').forEach(t => t.classList.toggle('col-active', t.dataset.colId === state.activeColId));
-      // Update active class on all grade td cells
-      document.querySelectorAll('td.grade').forEach(td => td.classList.toggle('col-active', td.dataset.col === state.activeColId));
-      renderColSelector();
-      updateStats();
+      setActiveCol(th.dataset.colId);
     };
   });
   thead.querySelectorAll('.col-remove-btn').forEach(btn => {
@@ -1505,7 +1605,7 @@ function render() {
     state.columns.forEach(col => {
       const g = s.grades[col.id];
       const gradeClass = g === null ? '' : g >= 85 ? 'high' : g >= 60 ? 'mid' : 'low';
-      const isActive = col.id === state.activeColId ? ' col-active' : '';
+      const isActive = isColActive(col.id) ? ' col-active' : '';
       cells += `
         <td class="grade${isActive}" data-edit="${i}" data-col="${col.id}" title="Düzenlemek için tıkla">${
           g === null
@@ -1570,6 +1670,25 @@ function render() {
 }
 
 function updateStats() {
+  // "Hepsi" mode: a student is "done" when every column is filled; the average
+  // is over all filled grade cells.
+  if (state.activeColId === ALL_COLS) {
+    const allFilled = state.students.filter(s =>
+      state.columns.every(c => s.grades[c.id] !== null && s.grades[c.id] !== undefined));
+    const flat = [];
+    state.students.forEach(s => state.columns.forEach(c => {
+      const g = s.grades[c.id];
+      if (g !== null && g !== undefined) flat.push(g);
+    }));
+    document.getElementById('statTotal').textContent = state.students.length;
+    document.getElementById('statDone').textContent = allFilled.length;
+    document.getElementById('statAvg').textContent = flat.length
+      ? (flat.reduce((a, b) => a + b, 0) / flat.length).toFixed(1)
+      : '—';
+    document.getElementById('counter').textContent = `${allFilled.length} / ${state.students.length} · Hepsi`;
+    return;
+  }
+
   const activeCol = state.columns.find(c => c.id === state.activeColId) || state.columns[0];
   const done = state.students.filter(s => s.grades[state.activeColId] !== null && s.grades[state.activeColId] !== undefined);
   document.getElementById('statTotal').textContent = state.students.length;
@@ -1581,6 +1700,20 @@ function updateStats() {
     `${done.length} / ${state.students.length} · ${escapeHtml(activeCol ? activeCol.name : '')}`;
 }
 
+// Lightweight active-column highlight (avoids a full re-render so input focus
+// isn't stolen). In "Hepsi" mode every grade column is highlighted.
+function applyActiveColHighlight() {
+  document.querySelectorAll('th.grade-col').forEach(th => th.classList.toggle('col-active', isColActive(th.dataset.colId)));
+  document.querySelectorAll('td.grade').forEach(td => td.classList.toggle('col-active', isColActive(td.dataset.col)));
+}
+
+function setActiveCol(colId) {
+  state.activeColId = colId;
+  applyActiveColHighlight();
+  renderColSelector();
+  updateStats();
+}
+
 function renderColSelector() {
   const container = document.getElementById('colSelector');
   container.innerHTML = '';
@@ -1590,16 +1723,20 @@ function renderColSelector() {
     btn.className = 'col-btn' + (col.id === state.activeColId ? ' active' : '');
     btn.textContent = col.name;
     btn.title = `Mikrofon → ${col.name}`;
-    btn.onclick = () => {
-      state.activeColId = col.id;
-      // Lightweight update — avoid full re-render so no focus is stolen
-      document.querySelectorAll('th.grade-col').forEach(th => th.classList.toggle('col-active', th.dataset.colId === col.id));
-      document.querySelectorAll('td.grade').forEach(td => td.classList.toggle('col-active', td.dataset.col === col.id));
-      renderColSelector();
-      updateStats();
-    };
+    btn.onclick = () => setActiveCol(col.id);
     container.appendChild(btn);
   });
+
+  // "Hepsi" — dictate one grade per column in a single utterance (separated by
+  // "artı"/"plus"). Only meaningful with 2+ columns.
+  if (state.columns.length > 1) {
+    const allBtn = document.createElement('button');
+    allBtn.className = 'col-btn' + (state.activeColId === ALL_COLS ? ' active' : '');
+    allBtn.textContent = 'Hepsi';
+    allBtn.title = 'Mikrofon → tüm sütunlar ("artı" / "plus" ile ayırın)';
+    allBtn.onclick = () => setActiveCol(ALL_COLS);
+    container.appendChild(allBtn);
+  }
 
   const addBtn = document.createElement('button');
   addBtn.className = 'col-add-btn';
@@ -1757,6 +1894,20 @@ function initRecognition() {
 }
 
 function handleFinal(text, speechConfidence = 1) {
+  if (state.activeColId === ALL_COLS && state.columns.length > 1) {
+    handleFinalAll(text, speechConfidence);
+    return;
+  }
+
+  // Not in "Hepsi" mode but the user said "artı"/"plus" — likely a mistake.
+  // Warn instead of silently writing a wrong grade to the single active column.
+  if (hasGradeSeparator(text)) {
+    playWarningSound();
+    log(`"artı/plus" yalnızca "Hepsi" modunda kullanılır — "${text}"`, 'err');
+    clearPendingName();
+    return;
+  }
+
   const parsed = parseUtterance(text, state.lang);
   if (!parsed) return;
 
@@ -1861,6 +2012,137 @@ function applyGrade(index, grade, confidence = 1) {
   } else {
     log(`${state.students[index].name}${colLabel} → ${grade}`, 'ok');
   }
+}
+
+// ============ "HEPSI" MODE HANDLERS ============
+function handleFinalAll(text, speechConfidence = 1) {
+  const parsed = parseUtteranceMulti(text, state.lang);
+  if (!parsed) return;
+
+  if (!parsed.grades) {
+    playWarningSound();
+    if (parsed.error === 'out_of_range') log(`Not aralık dışı: "${text}"`, 'err');
+    else log(`Not algılanmadı: "${text}"`, 'err');
+    return;
+  }
+
+  if (!parsed.name) {
+    playWarningSound();
+    log(`İsim algılanmadı: "${text}"`, 'err');
+    return;
+  }
+
+  // Require exactly one grade per column — reject otherwise.
+  if (parsed.grades.length !== state.columns.length) {
+    playWarningSound();
+    log(`${parsed.grades.length} not söylendi ama ${state.columns.length} sütun var — "${text}"`, 'err');
+    return;
+  }
+
+  const match = findBestStudent(parsed.name);
+  if (!match) {
+    playWarningSound();
+    log(`Eşleşme yok: "${parsed.name}"`, 'err');
+    return;
+  }
+
+  const matchConf = Math.max(0, 1 - (match.score / 0.45));
+  const overallConf = Math.min(speechConfidence, matchConf);
+  applyGradesAll(match.index, parsed.grades, overallConf, speechConfidence, text);
+}
+
+function applyGradesAll(studentIndex, grades, overallConf, speechConfidence = 1, originalText = '') {
+  assert(Array.isArray(grades), 'grades must be an array');
+  assert(grades.length === state.columns.length, 'one grade per column required');
+  const student = state.students[studentIndex];
+  assert(student, 'student must exist');
+
+  const changes = state.columns.map((c, i) => ({
+    colId: c.id,
+    name: c.name,
+    oldVal: (c.id in student.grades) ? student.grades[c.id] : null,
+    newVal: grades[i],
+  }));
+
+  const hasChange = changes.some(ch => ch.newVal !== ch.oldVal);
+  if (!hasChange) {
+    log(`${student.name} zaten aynı notlara sahip (değişiklik yok)`, 'ok');
+    return;
+  }
+
+  const isOverwrite = changes.some(ch =>
+    ch.oldVal !== null && ch.oldVal !== undefined && ch.oldVal !== ch.newVal);
+  const isLow = overallConf < 0.55;
+
+  if (isOverwrite || isLow) {
+    showAllConfirm(student, studentIndex, changes, { speechConfidence, overallConf }, originalText);
+    return;
+  }
+
+  commitGradesAll(studentIndex, changes, overallConf);
+}
+
+function commitGradesAll(studentIndex, changes, confidence = 1) {
+  assert(Array.isArray(changes) && changes.length, 'changes required');
+  pushUndo();
+  const student = state.students[studentIndex];
+  changes.forEach(ch => {
+    assert(ch.colId in student.grades, 'unknown column ' + ch.colId);
+    student.grades[ch.colId] = ch.newVal;
+  });
+  render();
+  flashRow(studentIndex, confidence);
+  saveState();
+  const summary = changes.map(ch => `${ch.name}: ${ch.newVal}`).join(', ');
+  if (confidence < 0.75) {
+    log(`${student.name} → ${summary} · confidence ${fmtPct(confidence)}`, 'warn');
+  } else {
+    log(`${student.name} → ${summary}`, 'ok');
+  }
+}
+
+function showAllConfirm(student, index, changes, conf, originalText) {
+  pauseRecognitionForModal();
+  const modal = document.getElementById('confirmModal');
+  document.getElementById('confirmTitle').textContent = `${student.name} — tüm notları gir?`;
+
+  const rows = changes.map(ch => {
+    const oldPart = (ch.oldVal !== null && ch.oldVal !== undefined)
+      ? `<span class="old">${ch.oldVal}</span> → ` : '';
+    return `<strong>${escapeHtml(ch.name)}</strong>: ${oldPart}<span class="new">${ch.newVal}</span>`;
+  }).join('<br>');
+
+  let body = `Duyulan: <em>"${escapeHtml(originalText)}"</em><br><br>${rows}`;
+  if (conf && conf.overallConf < 0.75) {
+    body += `<br><br><span class="conf-warn">⚠ Tanıma güveni yalnızca ${fmtPct(conf.overallConf)} — lütfen doğrulayın.</span>`;
+  }
+  document.getElementById('confirmBody').innerHTML = body;
+  modal.style.display = 'grid';
+
+  const ok = document.getElementById('confirmOk');
+  const cancel = document.getElementById('confirmCancel');
+  ok.textContent = 'Uygula';
+  cancel.textContent = 'İptal';
+
+  const cleanup = () => {
+    modal.style.display = 'none';
+    ok.textContent = 'Overwrite';
+    cancel.textContent = 'Cancel';
+    ok.removeEventListener('click', onOk);
+    cancel.removeEventListener('click', onCancel);
+    document.removeEventListener('keydown', onKey);
+    resumeRecognitionAfterModal();
+  };
+  const onOk = () => { commitGradesAll(index, changes, conf ? conf.overallConf : 1); cleanup(); };
+  const onCancel = () => { log(`İptal: "${originalText}"`, 'ok'); cleanup(); };
+  const onKey = (e) => {
+    if (e.key === 'Enter') onOk();
+    else if (e.key === 'Escape') onCancel();
+  };
+
+  ok.addEventListener('click', onOk);
+  cancel.addEventListener('click', onCancel);
+  document.addEventListener('keydown', onKey);
 }
 
 // Pause the mic while showing modals so the user's "yes" / "no" speech
@@ -2368,6 +2650,7 @@ document.addEventListener('keydown', (e) => {
 
 // ============ INIT ============
 const hadCrashData = loadSavedState();
+normalizeActiveCol();
 render();
 renderColSelector();
 updateUndoBtn();
