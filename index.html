@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Sesli Notlandırıcı</title>
+<title>Speech to Grade</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,500;9..144,700;9..144,900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -78,7 +78,7 @@
   }
 
   h1 {
-    font-size: 48px;
+    font-size: 40px;
     font-weight: 900;
     letter-spacing: -0.03em;
     line-height: 0.95;
@@ -834,8 +834,8 @@
 
   <header>
     <div class="brand">
-      <div class="brand-mark">V</div>
-      <h1>Voice<span class="accent">·</span>Grader<em style="font-style:normal;color:var(--accent);">.</em></h1>
+      <div class="brand-mark">S2G</div>
+      <h1>Speech<span class="accent">·</span>to<span class="accent">·</span>Grade<em style="font-style:normal;color:var(--accent);"></em></h1>
     </div>
     <div class="meta">
       <strong>Eller serbest giriş</strong>
@@ -1142,7 +1142,7 @@ function updateUndoBtn() {
 // ============ PERSISTENCE ============
 function saveState() {
   try {
-    localStorage.setItem('voiceGrader', JSON.stringify({
+    localStorage.setItem('speechToGrade', JSON.stringify({
       name: state.sessionName,
       students: state.students,
       columns: state.columns,
@@ -1171,7 +1171,7 @@ function migrateStudents(students, columns) {
 
 function loadSavedState() {
   try {
-    const saved = localStorage.getItem('voiceGrader');
+    const saved = localStorage.getItem('speechToGrade');
     if (saved) {
       const parsed = JSON.parse(saved);
       // Legacy: bare array of students
@@ -1208,7 +1208,7 @@ function setDirty(dirty) {
     else if (state.fileHandle) btn.textContent = '✓ Kaydedildi';
     else                    btn.textContent = 'Kaydet';
   }
-  document.title = (dirty ? '● ' : '') + state.sessionName + ' — Sesli Notlandırıcı';
+  document.title = (dirty ? '● ' : '') + state.sessionName + ' — Speech to Grade';
 }
 
 function syncSessionNameInput() {
@@ -1259,7 +1259,7 @@ async function saveSessionAs() {
     try {
       const handle = await window.showSaveFilePicker({
         suggestedName: state.sessionName + '.json',
-        types: [{ description: 'Voice Grader Session', accept: { 'application/json': ['.json'] } }],
+        types: [{ description: 'Speech to Grade Session', accept: { 'application/json': ['.json'] } }],
       });
       state.fileHandle = handle;
       await writeToHandle(handle);
@@ -1290,7 +1290,7 @@ async function openSession() {
   if (window.showOpenFilePicker) {
     try {
       const [handle] = await window.showOpenFilePicker({
-        types: [{ description: 'Voice Grader Session', accept: { 'application/json': ['.json'] } }],
+        types: [{ description: 'Speech to Grade Session', accept: { 'application/json': ['.json'] } }],
       });
       const text = await (await handle.getFile()).text();
       applySessionData(JSON.parse(text));
@@ -1317,7 +1317,7 @@ function newSession() {
   render();
   renderColSelector();
   setDirty(false);
-  try { localStorage.removeItem('voiceGrader'); } catch(e) {}
+  try { localStorage.removeItem('speechToGrade'); } catch(e) {}
   log('New session started', 'ok');
 }
 
@@ -2787,10 +2787,10 @@ document.getElementById('disclaimerBtn').onclick = () => {
   document.getElementById('disclaimerModal').style.display = 'grid';
 };
 document.getElementById('disclaimerClose').onclick = () => {
-  localStorage.setItem('voiceGraderDisclaimerSeen', '1');
+  localStorage.setItem('speechToGradeDisclaimerSeen', '1');
   document.getElementById('disclaimerModal').style.display = 'none';
   // After dismissing disclaimer, show help if not permanently hidden
-  if (!localStorage.getItem('voiceGraderHelpSeen')) {
+  if (!localStorage.getItem('speechToGradeHelpSeen')) {
     document.getElementById('helpModal').style.display = 'grid';
   }
 };
@@ -2800,7 +2800,7 @@ document.getElementById('helpClose').onclick = () => {
   document.getElementById('helpModal').style.display = 'none';
 };
 document.getElementById('helpNoShow').onclick = () => {
-  localStorage.setItem('voiceGraderHelpSeen', '1');
+  localStorage.setItem('speechToGradeHelpSeen', '1');
   document.getElementById('helpModal').style.display = 'none';
 };
 
@@ -2883,9 +2883,9 @@ setDirty(hadCrashData); // crash-recovery data is unsaved relative to any file
 state.recognition = initRecognition();
 
 // First visit: show disclaimer; after that, show help every visit unless dismissed
-if (!localStorage.getItem('voiceGraderDisclaimerSeen')) {
+if (!localStorage.getItem('speechToGradeDisclaimerSeen')) {
   document.getElementById('disclaimerModal').style.display = 'grid';
-} else if (!localStorage.getItem('voiceGraderHelpSeen')) {
+} else if (!localStorage.getItem('speechToGradeHelpSeen')) {
   document.getElementById('helpModal').style.display = 'grid';
 }
 </script>
