@@ -98,6 +98,22 @@
 
   .meta strong { color: var(--ink); display: block; font-size: 12px; }
 
+  .disclaimer-btn {
+    background: none;
+    border: 1px solid var(--accent);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    cursor: pointer;
+    padding: 3px 8px;
+    margin-top: 6px;
+    display: inline-block;
+    border-radius: 2px;
+  }
+  .disclaimer-btn:hover { background: var(--accent); color: var(--paper); }
+
   .grid {
     display: grid;
     grid-template-columns: 1fr 380px;
@@ -823,7 +839,7 @@
     </div>
     <div class="meta">
       <strong>Eller serbest giriş</strong>
-      Web Speech API · Yalnızca yerel
+      <button class="disclaimer-btn" id="disclaimerBtn">ⓘ KVKK Bildirimi</button>
     </div>
   </header>
 
@@ -913,9 +929,11 @@
     Listeden en uygun eşleşme bulunup notu yazılır. Eğer eşleşme güveni düşük çıkarsa uyarı verip onayınızı isteyecektir.
     <br>
     
-    <br><b>Çoklu Not Girişi: </b> Bir öğrenci için aynı anda birden çok not girmek için "+ Sütun Ekle" ye basın ve <code>Hepsi</code> seçeneğini açıp notları <code>artı</code> / <code>plus</code> ile ayırarak söyleyin: <code>"Enes on beş artı yirmi beş"</code>  ifadesi Enes Not1: 15, Not2: 25 olarak kaydedilecektir.<br>
-    
-    <br><b>Oturum Yönetimi: </b> Üstteki oturum adını tıklayarak oturuma isim verebilir, kaydedebilir veya kayıtlı oturumları açabilirsiniz. Bu sayede farklı sınıflar, sınavlar veya tarihleri için not defterleri oluşturabilirsiniz.
+    <br><h3>ÇOKLU NOT GİRİŞİ</h3>
+    Bir öğrenci için aynı anda birden çok not girmek için <code>+ Sütun Ekle</code>'ye basın ve <code>Hepsi</code> seçeneğini açıp notları <code>artı</code> / <code>plus</code> ile ayırarak söyleyin: <code>"Enes on beş artı yirmi beş"</code>  ifadesi Enes Not1: 15, Not2: 25 olarak kaydedilecektir.<br>
+  
+    <br><h3>OTURUM YÖNETİMİ</h3>
+    Üstteki oturum adını tıklayarak oturuma isim verebilir, kaydedebilir veya kayıtlı oturumları açabilirsiniz. Bu sayede farklı sınıflar, sınavlar veya tarihleri için not defterleri oluşturabilirsiniz.
   </template>
 
   <div class="help">
@@ -976,6 +994,19 @@
       <div class="modal-actions">
         <button class="ctrl" id="pasteCancel">İptal</button>
         <button class="ctrl primary" id="pasteOk">İsimleri Yükle</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Disclaimer Modal -->
+  <div id="disclaimerModal" class="modal-overlay" style="display:none">
+    <div class="modal" style="max-width:480px">
+      <div class="modal-label">Gizlilik Bildirimi</div>
+      <h2>KVKK & Web Speech API</h2>
+      <p>Bu uygulama ses tanıma için Google'ın Web Speech API'sini kullanmaktadır. Mikrofona söylenen ifadeler Google sunucularında işlenebilir.</p>
+      <p>Öğrenci adı gibi kişisel veriler içeren konuşmaları başlatmadan önce gerekli onayları aldığınızdan emin olunuz. 6698 sayılı KVKK kapsamındaki tüm sorumluluklar kullanıcıya aittir.</p>
+      <div class="modal-actions">
+        <button class="ctrl primary" id="disclaimerClose">Anladım</button>
       </div>
     </div>
   </div>
@@ -2751,6 +2782,19 @@ document.getElementById('openBtn').onclick = () => openSession();
 document.getElementById('newBtn').onclick  = () => newSession();
 document.getElementById('undoBtn').onclick = () => undo();
 
+// Disclaimer modal
+document.getElementById('disclaimerBtn').onclick = () => {
+  document.getElementById('disclaimerModal').style.display = 'grid';
+};
+document.getElementById('disclaimerClose').onclick = () => {
+  localStorage.setItem('voiceGraderDisclaimerSeen', '1');
+  document.getElementById('disclaimerModal').style.display = 'none';
+  // After dismissing disclaimer, show help if not permanently hidden
+  if (!localStorage.getItem('voiceGraderHelpSeen')) {
+    document.getElementById('helpModal').style.display = 'grid';
+  }
+};
+
 // Help modal
 document.getElementById('helpClose').onclick = () => {
   document.getElementById('helpModal').style.display = 'none';
@@ -2797,6 +2841,10 @@ document.addEventListener('keydown', (e) => {
   if (tag === 'INPUT' || tag === 'TEXTAREA') return;
 
   // Escape: close modals
+  if (e.key === 'Escape' && document.getElementById('disclaimerModal').style.display !== 'none') {
+    document.getElementById('disclaimerClose').click();
+    return;
+  }
   if (e.key === 'Escape' && document.getElementById('helpModal').style.display !== 'none') {
     document.getElementById('helpClose').click();
     return;
@@ -2813,6 +2861,7 @@ document.addEventListener('keydown', (e) => {
     if (document.getElementById('importModeModal').style.display !== 'none') return;
     if (document.getElementById('clearModal').style.display !== 'none') return;
     if (document.getElementById('helpModal').style.display !== 'none') return;
+    if (document.getElementById('disclaimerModal').style.display !== 'none') return;
     e.preventDefault();
     state.listening ? stopListening() : startListening();
   }
@@ -2833,8 +2882,10 @@ syncSessionNameInput();
 setDirty(hadCrashData); // crash-recovery data is unsaved relative to any file
 state.recognition = initRecognition();
 
-// Show help popup on every visit unless permanently dismissed
-if (!localStorage.getItem('voiceGraderHelpSeen')) {
+// First visit: show disclaimer; after that, show help every visit unless dismissed
+if (!localStorage.getItem('voiceGraderDisclaimerSeen')) {
+  document.getElementById('disclaimerModal').style.display = 'grid';
+} else if (!localStorage.getItem('voiceGraderHelpSeen')) {
   document.getElementById('helpModal').style.display = 'grid';
 }
 </script>
