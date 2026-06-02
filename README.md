@@ -4,9 +4,9 @@ Bu proje Excel'e not girme işlemini kolaylaştırmak, elle arama yapıp hücrey
 
 ---
 
-## User Manual
+## Hızlı Kullanım Kılavuzu
 
-### What You Need
+### Neye ihtiyaç var?
 
 - İnternet tarayıcısı. İdealde tüm tarayıcılarda çalışması beklense de açık şekilde en iyi çalışma **Chrome** tarayıcısında görülmüştür. Stabil çalışma için şimdilik onu kullanmanızı tavsiye ediyoruz. (Safari üzerinde test edilmedi.)
 - Mikrofon.
