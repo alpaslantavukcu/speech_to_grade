@@ -1309,7 +1309,7 @@ function newSession() {
   state.columns = [{ id: 'g1', name: 'Not 1' }];
   state.nextColId = 2;
   state.activeColId = 'g1';
-  state.sessionName = 'Untitled Session';
+  state.sessionName = 'İsimsiz Oturum';
   state.fileHandle = null;
   undoStack.length = 0;
   updateUndoBtn();
@@ -2010,7 +2010,7 @@ function initRecognition() {
     log(`Mic error: ${e.error}`, 'err');
     if (e.error === 'not-allowed') {
       stopListening();
-      setStatus('Microphone access denied');
+      setStatus('Mikrofon erişimi reddedildi');
     }
   };
 
@@ -2312,8 +2312,8 @@ function showAllConfirm(student, index, changes, conf, originalText) {
 
   const cleanup = () => {
     modal.style.display = 'none';
-    ok.textContent = 'Overwrite';
-    cancel.textContent = 'Cancel';
+    ok.textContent = 'Üstüne Yaz';
+    cancel.textContent = 'İptal';
     ok.removeEventListener('click', onOk);
     cancel.removeEventListener('click', onCancel);
     document.removeEventListener('keydown', onKey);
@@ -2340,7 +2340,7 @@ function pauseRecognitionForModal() {
     state.listening = false;
     try { state.recognition.stop(); } catch(e) {}
     document.getElementById('micBtn').classList.remove('listening');
-    setStatus('Paused — waiting for confirmation');
+    setStatus('Durduruldu — onay bekleniyor');
   }
 }
 function resumeRecognitionAfterModal() {
@@ -2354,14 +2354,14 @@ function showOverwriteConfirm(student, newGrade, index, conf = null) {
   pauseRecognitionForModal();
   const modal = document.getElementById('confirmModal');
   const activeCol = state.columns.find(c => c.id === state.activeColId);
-  const colLabel = activeCol ? ` (${activeCol.name})` : '';
-  document.getElementById('confirmTitle').textContent = `Overwrite ${student.name}'s grade${colLabel}?`;
+  const colLabel = activeCol ? ` — ${activeCol.name}` : '';
+  document.getElementById('confirmTitle').textContent = `${student.name}${colLabel} notunu güncelle?`;
   const currentGrade = student.grades[state.activeColId];
   let body =
-    `<strong>${escapeHtml(student.name)}</strong> already has a grade of <span class="old">${currentGrade}</span>. ` +
-    `Replace it with <span class="new">${newGrade}</span>?`;
+    `<strong>${escapeHtml(student.name)}</strong> için zaten <span class="old">${currentGrade}</span> notu var. ` +
+    `<span class="new">${newGrade}</span> ile değiştirilsin mi?`;
   if (conf && conf.overallConf < 0.75) {
-    body += `<br><br><span class="conf-warn">⚠ Recognition confidence is only ${fmtPct(conf.overallConf)} — please verify.</span>`;
+    body += `<br><br><span class="conf-warn">⚠ Tanıma güveni yalnızca ${fmtPct(conf.overallConf)} — lütfen doğrulayın.</span>`;
   }
   document.getElementById('confirmBody').innerHTML = body;
   modal.style.display = 'grid';
@@ -2391,30 +2391,30 @@ function showOverwriteConfirm(student, newGrade, index, conf = null) {
 function showLowConfidenceConfirm(student, newGrade, index, originalText, conf) {
   pauseRecognitionForModal();
   const modal = document.getElementById('confirmModal');
-  document.getElementById('confirmTitle').textContent = `Low confidence — confirm?`;
+  document.getElementById('confirmTitle').textContent = `Tanıma güveni düşük — onaylayın?`;
 
   // Explain what's uncertain
   const issues = [];
-  if (conf.speechConfidence < 0.6) issues.push(`speech recognition (${fmtPct(conf.speechConfidence)})`);
-  if (conf.matchConf < 0.6) issues.push(`name match (${fmtPct(conf.matchConf)})`);
-  const issueText = issues.length ? `Low ${issues.join(' and ')}.` : `Overall confidence ${fmtPct(conf.overallConf)}.`;
+  if (conf.speechConfidence < 0.6) issues.push(`ses tanıma (${fmtPct(conf.speechConfidence)})`);
+  if (conf.matchConf < 0.6) issues.push(`isim eşleşmesi (${fmtPct(conf.matchConf)})`);
+  const issueText = issues.length ? `Düşük ${issues.join(' ve ')}.` : `Genel güven ${fmtPct(conf.overallConf)}.`;
 
   const body =
-    `I heard: <em>"${escapeHtml(originalText)}"</em><br>` +
-    `Best guess: <strong>${escapeHtml(student.name)}</strong> → <span class="new">${newGrade}</span><br><br>` +
-    `<span class="conf-warn">⚠ ${issueText} Is this correct?</span>`;
+    `Duyulan: <em>"${escapeHtml(originalText)}"</em><br>` +
+    `En iyi eşleşme: <strong>${escapeHtml(student.name)}</strong> → <span class="new">${newGrade}</span><br><br>` +
+    `<span class="conf-warn">⚠ ${issueText} Doğru mu?</span>`;
   document.getElementById('confirmBody').innerHTML = body;
   modal.style.display = 'grid';
 
   const ok = document.getElementById('confirmOk');
   const cancel = document.getElementById('confirmCancel');
-  ok.textContent = 'Yes, apply';
-  cancel.textContent = 'No, skip';
+  ok.textContent = 'Onayla';
+  cancel.textContent = 'İptal';
 
   const cleanup = () => {
     modal.style.display = 'none';
-    ok.textContent = 'Overwrite'; // reset to default for next overwrite use
-    cancel.textContent = 'Cancel';
+    ok.textContent = 'Üstüne Yaz';
+    cancel.textContent = 'İptal';
     ok.removeEventListener('click', onOk);
     cancel.removeEventListener('click', onCancel);
     document.removeEventListener('keydown', onKey);
@@ -2446,8 +2446,8 @@ function startListening() {
     state.recognition.start();
     document.getElementById('micBtn').classList.add('listening');
     document.getElementById('recDot').classList.add('live');
-    setStatus('Listening — speak now');
-    document.getElementById('recIndicator').textContent = 'LIVE';
+    setStatus('Aktif — konuşabilirsiniz');
+    document.getElementById('recIndicator').textContent = 'AKTİF';
     document.getElementById('recIndicator').style.color = 'var(--accent)';
   } catch (e) {
     log('Could not start mic', 'err');
@@ -2463,8 +2463,8 @@ function stopListening() {
   clearPendingAll();
   document.getElementById('micBtn').classList.remove('listening');
   document.getElementById('recDot').classList.remove('live');
-  setStatus('Tap to start listening');
-  document.getElementById('recIndicator').textContent = 'IDLE';
+  setStatus('Başlamak için tıklayın');
+  document.getElementById('recIndicator').textContent = 'BEKLEMEDE';
   document.getElementById('recIndicator').style.color = 'var(--muted)';
 }
 
@@ -2677,9 +2677,9 @@ function showImportModeModal(names, source) {
   const modal = document.getElementById('importModeModal');
   const hasGrades = state.students.some(s => s.grade !== null);
   document.getElementById('importModeBody').innerHTML =
-    `Importing <strong>${names.length}</strong> name(s) from <strong>${escapeHtml(source)}</strong>. ` +
-    `You currently have <strong>${state.students.length}</strong> student(s).` +
-    (hasGrades ? `<br><br><span class="conf-warn">⚠ Replacing will erase all existing grades.</span>` : '');
+    `<strong>${escapeHtml(source)}</strong> kaynağından <strong>${names.length}</strong> isim yüklenecek. ` +
+    `Listede halihazırda <strong>${state.students.length}</strong> öğrenci var.` +
+    (hasGrades ? `<br><br><span class="conf-warn">⚠ Var olanları değiştirirseniz mevcut tüm notlar silinecektir.</span>` : '');
   modal.style.display = 'grid';
 
   const replaceBtn = document.getElementById('importModeReplace');
@@ -2769,7 +2769,7 @@ document.getElementById('pasteOk').onclick = () => {
 const sessionNameInput = document.getElementById('sessionNameInput');
 sessionNameInput.addEventListener('blur', () => {
   const v = sessionNameInput.value.trim();
-  state.sessionName = v || 'Untitled Session';
+  state.sessionName = v || 'İsimsiz Oturum';
   sessionNameInput.value = state.sessionName;
   saveState();
 });

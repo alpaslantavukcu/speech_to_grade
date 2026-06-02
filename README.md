@@ -29,10 +29,10 @@ Doğruda kendi bilgisayarınıza indirip çalıştırmak isterseniz yalnızca `i
 2. **"İsim Listesi Yapıştır"** butonuna tıklayın.
 3. Yapıştırın ve onaylayın.
 
-**Option 2 — Dosyadan Al:**
+**Seçenek 2 — Dosyadan Al:**
 **"Dosyadan İsim Al"** butonuna tıklayın ve herbir satırda bir isim olan metin dosyasından(txt) isimleri alın.
 
-**Option 3 — Elle Ekleyin:**
+**Seçenk 3 — Elle Ekleyin:**
 Boş isim hücresine tıklayın ve ismi ekleyin.
 
 #### Not Sütunu/Sütunları Ekleyin
@@ -59,13 +59,13 @@ Sütun başlığına tıklayarak yeniden isimlendirebilirsiniz.
 
 #### Dil Desteği
 
-**Turkish (tr-TR)** ve **English (en-US)** desteklenmektedir, arayüzden seçebilirsiniz.
+**Türkçe (tr-TR)** ve **English (en-US)** desteklenmektedir, arayüzden seçebilirsiniz.
 
 ---
 
 ### Hata Düzeltme
 
-- **Undo:** Geri Al butonuna tıklayın ya da `Ctrl+Z`.
+- **Geri Al:** Geri Al butonuna tıklayın ya da `Ctrl+Z`.
 - Uygulama oturumdaki son 50 aksiyonu tutmaktadır.
 
 Ayrıca tablodaki herhangi bir hücreye tıklayarak düzenleyebilir, silme işaretine tıklayarak silebilirsiniz.
