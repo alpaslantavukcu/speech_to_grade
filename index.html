@@ -1853,7 +1853,7 @@ function escapeHtml(s) {
 function scrollToRow(idx) {
   const tr = document.querySelector(`tr[data-idx="${idx}"]`);
   if (!tr) return;
-  tr.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  tr.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 // ============ LOG ============
