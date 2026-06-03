@@ -349,6 +349,21 @@
 
   .status strong { color: var(--ink); }
 
+  .mic-clear {
+    margin-top: 14px;
+    padding: 7px 16px;
+    background: transparent;
+    border: 1px solid var(--line);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .mic-clear:hover { border-color: var(--accent); color: var(--accent); }
+
   .transcript {
     min-height: 60px;
     margin-top: 20px;
@@ -894,6 +909,7 @@
           </svg>
         </button>
         <div class="status" id="status">Başlamak için tıklayın</div>
+        <button class="mic-clear" id="clearBufferBtn" title="Bekleyen ses girişini (söylenen isim/notu) temizle">✕ Temizle</button>
       </div>
 
       <div class="transcript" id="transcript">
@@ -2454,13 +2470,29 @@ function startListening() {
   }
 }
 
+// Reset the pending "name/grades awaiting completion" buffers and the live
+// transcript display. Used by the manual "Temizle" button and whenever the mic
+// is toggled, so a stray/unrelated utterance doesn't linger and pair with the
+// next thing said. Pass { announce: true } to log it (for the explicit button).
+function clearMicBuffer(opts = {}) {
+  const hadPending = pendingName.studentIndex !== null || pendingAll.studentIndex !== null;
+  clearPendingName();
+  clearPendingAll();
+  const transcriptEl = document.getElementById('transcript');
+  if (transcriptEl) {
+    transcriptEl.innerHTML = '<span class="placeholder">Duyulan konuşma burada görünecek...</span>';
+  }
+  if (opts.announce) {
+    log(hadPending ? 'Bekleyen giriş temizlendi' : 'Temizlenecek giriş yok', 'ok');
+  }
+}
+
 function stopListening() {
   state.listening = false;
   if (state.recognition) {
     try { state.recognition.stop(); } catch(e) {}
   }
-  clearPendingName();
-  clearPendingAll();
+  clearMicBuffer();
   document.getElementById('micBtn').classList.remove('listening');
   document.getElementById('recDot').classList.remove('live');
   setStatus('Başlamak için tıklayın');
@@ -2470,8 +2502,12 @@ function stopListening() {
 
 // ============ EVENTS ============
 document.getElementById('micBtn').onclick = () => {
-  state.listening ? stopListening() : startListening();
+  if (state.listening) stopListening();
+  else { clearMicBuffer(); startListening(); }
 };
+
+// Manually flush a stray/unrelated utterance sitting in the pending buffer
+document.getElementById('clearBufferBtn').onclick = () => clearMicBuffer({ announce: true });
 
 document.getElementById('addBtn').onclick = () => {
   const input = document.getElementById('newName');
@@ -2863,7 +2899,8 @@ document.addEventListener('keydown', (e) => {
     if (document.getElementById('helpModal').style.display !== 'none') return;
     if (document.getElementById('disclaimerModal').style.display !== 'none') return;
     e.preventDefault();
-    state.listening ? stopListening() : startListening();
+    if (state.listening) stopListening();
+    else { clearMicBuffer(); startListening(); }
   }
 });
 
