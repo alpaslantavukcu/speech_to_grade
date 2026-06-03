@@ -195,14 +195,10 @@
     transition: background 0.4s ease;
   }
 
-  tbody tr.flash {
-    animation: flash 1.6s ease-out;
-  }
-
-  @keyframes flash {
-    0%   { background: var(--flash-color, rgba(214, 73, 51, 0.55)); }
-    60%  { background: var(--flash-color-fade, rgba(214, 73, 51, 0.18)); }
-    100% { background: transparent; }
+  /* Last-updated row stays highlighted until another row is updated */
+  tbody tr.last-updated {
+    background: rgba(45, 90, 61, 0.22);
+    box-shadow: inset 3px 0 0 var(--accent-2);
   }
 
   tbody td.idx {
@@ -1053,6 +1049,7 @@ const state = {
   ],
   listening: false,
   lang: 'tr-TR',
+  lastUpdatedIndex: null,
   recognition: null,
   fileHandle: null,
   sessionName: 'İsimsiz Oturum',
@@ -1139,6 +1136,7 @@ function undo() {
   state.columns    = snap.columns;
   state.nextColId  = snap.nextColId;
   state.activeColId = snap.activeColId;
+  state.lastUpdatedIndex = null;
   render();
   renderColSelector();
   updateUndoBtn();
@@ -1258,6 +1256,7 @@ function applySessionData(data) {
     state.students = migrateStudents(data.students, state.columns);
   }
   if (data.name) { state.sessionName = data.name; syncSessionNameInput(); }
+  state.lastUpdatedIndex = null;
   normalizeActiveCol();
   undoStack.length = 0;
   updateUndoBtn();
@@ -1327,6 +1326,7 @@ function newSession() {
   state.activeColId = 'g1';
   state.sessionName = 'İsimsiz Oturum';
   state.fileHandle = null;
+  state.lastUpdatedIndex = null;
   undoStack.length = 0;
   updateUndoBtn();
   syncSessionNameInput();
@@ -1678,6 +1678,7 @@ function render() {
   state.students.forEach((s, i) => {
     const tr = document.createElement('tr');
     tr.dataset.idx = i;
+    if (i === state.lastUpdatedIndex) tr.classList.add('last-updated');
 
     let cells = `
       <td class="idx">${String(i+1).padStart(2,'0')}</td>
@@ -1706,6 +1707,10 @@ function render() {
       const idx = parseInt(btn.dataset.idx);
       pushUndo();
       state.students.splice(idx, 1);
+      if (state.lastUpdatedIndex !== null) {
+        if (idx === state.lastUpdatedIndex) state.lastUpdatedIndex = null;
+        else if (idx < state.lastUpdatedIndex) state.lastUpdatedIndex--;
+      }
       render();
       saveState();
     };
@@ -1737,6 +1742,7 @@ function render() {
         if (newVal !== cur) {
           pushUndo();
           state.students[idx].grades[colId] = newVal;
+          state.lastUpdatedIndex = idx;
           saveState();
         }
         render();
@@ -1830,39 +1836,11 @@ function escapeHtml(s) {
   return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-// Linear interpolate between two RGB triplets
-function lerpColor(a, b, t) {
-  return [
-    Math.round(a[0] + (b[0] - a[0]) * t),
-    Math.round(a[1] + (b[1] - a[1]) * t),
-    Math.round(a[2] + (b[2] - a[2]) * t),
-  ];
-}
-
-// Map confidence (0..1) to an RGB color: red → amber → green
-function confidenceColor(conf) {
-  const c = Math.max(0, Math.min(1, conf));
-  const red    = [214,  73,  51]; // var(--accent)
-  const amber  = [201, 169,  97]; // var(--gold)
-  const green  = [ 45, 122,  77]; // brighter than var(--accent-2) for visibility
-  // Two-stop gradient: 0..0.5 red→amber, 0.5..1 amber→green
-  return c < 0.5
-    ? lerpColor(red, amber, c / 0.5)
-    : lerpColor(amber, green, (c - 0.5) / 0.5);
-}
-
-function flashRow(idx, confidence = 1) {
+// Scroll the just-updated row into view. The row stays highlighted via the
+// .last-updated class (applied in render); no temporary flash.
+function scrollToRow(idx) {
   const tr = document.querySelector(`tr[data-idx="${idx}"]`);
   if (!tr) return;
-  const [r, g, b] = confidenceColor(confidence);
-  // Higher confidence = subtler flash; lower = more demanding of attention
-  const peakAlpha = 0.45 + (1 - confidence) * 0.30;   // 0.45 → 0.75
-  const fadeAlpha = peakAlpha * 0.35;
-  tr.style.setProperty('--flash-color',      `rgba(${r}, ${g}, ${b}, ${peakAlpha.toFixed(2)})`);
-  tr.style.setProperty('--flash-color-fade', `rgba(${r}, ${g}, ${b}, ${fadeAlpha.toFixed(2)})`);
-  tr.classList.remove('flash');
-  void tr.offsetWidth; // reflow to restart animation
-  tr.classList.add('flash');
   tr.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
@@ -2150,8 +2128,9 @@ function applyGrade(index, grade, confidence = 1) {
   const colId = state.activeColId;
   const activeCol = state.columns.find(c => c.id === colId);
   state.students[index].grades[colId] = grade;
+  state.lastUpdatedIndex = index;
   render();
-  flashRow(index, confidence);
+  scrollToRow(index);
   saveState();
   const colLabel = activeCol ? ` [${activeCol.name}]` : '';
   if (confidence < 0.75) {
@@ -2292,8 +2271,9 @@ function commitGradesAll(studentIndex, changes, confidence = 1) {
     assert(ch.colId in student.grades, 'unknown column ' + ch.colId);
     student.grades[ch.colId] = ch.newVal;
   });
+  state.lastUpdatedIndex = studentIndex;
   render();
-  flashRow(studentIndex, confidence);
+  scrollToRow(studentIndex);
   saveState();
   const summary = changes.map(ch => `${ch.name}: ${ch.newVal}`).join(', ');
   if (confidence < 0.75) {
@@ -2737,6 +2717,7 @@ function showImportModeModal(names, source) {
       state.columns.forEach(c => { grades[c.id] = null; });
       return { name, grades };
     });
+    state.lastUpdatedIndex = null;
     render(); saveState();
     log(`Replaced list with ${names.length} names from ${source}`, 'ok');
     cleanup();
