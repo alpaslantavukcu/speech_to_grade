@@ -164,6 +164,11 @@
   }
 
   /* TABLE */
+  .table-wrap {
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+
   table {
     width: 100%;
     border-collapse: collapse;
@@ -179,6 +184,10 @@
     color: var(--muted);
     border-bottom: 2px solid var(--ink);
     font-weight: 500;
+    position: sticky;
+    top: 0;
+    background: var(--paper-2);
+    z-index: 2;
   }
 
   thead th.num { text-align: right; width: 110px; }
@@ -713,7 +722,8 @@
 
   /* GRADE COLUMN HEADERS */
   thead th.grade-col {
-    position: relative;
+    position: sticky;
+    top: 0;
     min-width: 100px;
     text-align: right;
     padding-right: 24px;
@@ -871,10 +881,12 @@
         <span id="counter">0 / 0 notlandırıldı</span>
       </div>
 
-      <table>
-        <thead id="thead"></thead>
-        <tbody id="tbody"></tbody>
-      </table>
+      <div class="table-wrap">
+        <table>
+          <thead id="thead"></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
 
       <div class="add-row">
         <input id="newName" type="text" placeholder="Öğrenci adı ekle..." />
