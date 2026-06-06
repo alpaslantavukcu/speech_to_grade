@@ -1419,8 +1419,12 @@ function findBestStudent(spokenName) {
     const ratio = dist / Math.max(sName.length, target.length);
 
     let score = ratio;
+    // Note (Enes): I disabled this boost because it was causing false detection 
+    // "Muhammed" will match with many names and get boosted to 0.15 (0.85 accuracy), 
+    // and there will be many matches with 0.15 score. Then it will pick the first one in the list.
+    // So, I think it's safer to rely on pure Levenshtein distance without the boost, and set a reasonable threshold (e.g. 0.45) for acceptance.
     // Boost if spoken contains the student name as substring
-    if (target.includes(sName) || sName.includes(target)) score = Math.min(score, 0.15);
+    // if (target.includes(sName) || sName.includes(target)) score = Math.min(score, 0.15);
 
     if (score < bestScore) {
       bestScore = score;
