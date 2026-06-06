@@ -1405,10 +1405,20 @@ function levenshtein(a, b) {
   return dp[m][n];
 }
 
+// ===== Recognition confidence thresholds =====
+// Speech recognition confidence from the Web Speech API: 0–1, higher = better.
+// Advisory only — flags a warning in the log/modal, never triggers the confirm prompt.
+const SPEECH_WARN_THRESHOLD = 0.60;   // below → flag as low-confidence
+
+// Name-match similarity = 1 - (Levenshtein distance ÷ length): 1 = exact, 0 = unrelated.
+const MATCH_MIN_THRESHOLD  = 0.55; // below → reject outright (no match at all)
+const MATCH_CONFIRM_THRESHOLD = 0.75; // below → prompt the user to confirm
+const MATCH_WARN_THRESHOLD    = 0.85; // below (but ≥ confirm) → apply but flag in log/modal
+
 function findBestStudent(spokenName) {
   const target = normalize(spokenName);
   if (!target) return null;
-  let best = null, bestScore = Infinity;
+  let best = null, bestScore = -Infinity;
 
   for (let i = 0; i < state.students.length; i++) {
     const sName = normalize(state.students[i].name);
@@ -1418,22 +1428,23 @@ function findBestStudent(spokenName) {
     const dist = levenshtein(sName, target);
     const ratio = dist / Math.max(sName.length, target.length);
 
-    let score = ratio;
-    // Note (Enes): I disabled this boost because it was causing false detection 
-    // "Muhammed" will match with many names and get boosted to 0.15 (0.85 accuracy), 
-    // and there will be many matches with 0.15 score. Then it will pick the first one in the list.
-    // So, I think it's safer to rely on pure Levenshtein distance without the boost, and set a reasonable threshold (e.g. 0.45) for acceptance.
+    // Similarity: 1 = exact match, 0 = completely different.
+    let score = 1 - ratio;
+    // Note (Enes): I disabled this boost because it was causing false detection
+    // "Muhammed" will match with many names and get boosted to 0.85 accuracy,
+    // and there will be many matches with the same score. Then it will pick the first one in the list.
+    // So, I think it's safer to rely on pure Levenshtein distance without the boost, and set a reasonable threshold (MATCH_ACCEPT_THRESHOLD) for acceptance.
     // Boost if spoken contains the student name as substring
-    // if (target.includes(sName) || sName.includes(target)) score = Math.min(score, 0.15);
+    // if (target.includes(sName) || sName.includes(target)) score = Math.max(score, 0.85);
 
-    if (score < bestScore) {
+    if (score > bestScore) {
       bestScore = score;
       best = { index: i, score };
     }
   }
 
   // Accept if reasonably close
-  return (best && best.score <= 0.45) ? best : null;
+  return (best && best.score >= MATCH_MIN_THRESHOLD) ? best : null;
 }
 
 // ============ PARSE UTTERANCE ============
@@ -2077,10 +2088,8 @@ function handleFinal(text, speechConfidence = 1) {
     if (pendingName.studentIndex !== null) {
       const idx = pendingName.studentIndex;
       const combinedSpeechConf = Math.min(speechConfidence, pendingName.speechConfidence);
-      const matchConf = Math.max(0, 1 - (pendingName.matchScore / 0.45));
-      const overallConf = Math.min(combinedSpeechConf, matchConf);
       clearPendingName();
-      applyGradeFromMatch(idx, parsed.grade, overallConf);
+      applyGradeFromMatch(idx, parsed.grade, combinedSpeechConf, pendingName.matchScore);
     } else {
       playWarningSound();
       log(`No name in: "${text}"`, 'err');
@@ -2099,18 +2108,17 @@ function handleFinal(text, speechConfidence = 1) {
   // Clear any pending name buffer now that we have a full "name + grade" utterance
   clearPendingName();
 
-  const matchConf = Math.max(0, 1 - (match.score / 0.45));
-  const overallConf = Math.min(speechConfidence, matchConf);
-  applyGradeFromMatch(match.index, parsed.grade, overallConf, speechConfidence, text);
+  applyGradeFromMatch(match.index, parsed.grade, speechConfidence, match.score, text);
 }
 
 // Shared post-match logic: confidence checks, overwrite prompt, low-confidence prompt, apply
-function applyGradeFromMatch(studentIndex, grade, overallConf, speechConfidence = 1, originalText = '') {
+function applyGradeFromMatch(studentIndex, grade, speechConfidence = 1, matchScore = 1, originalText = '') {
   const student = state.students[studentIndex];
   const colId = state.activeColId;
   const currentGrade = student.grades[colId];
 
-  const isLow = overallConf < 0.55;
+  // Confirm prompt is gated on match quality only; speech is advisory.
+  const isLow = matchScore < MATCH_CONFIRM_THRESHOLD;
 
   // Overwriting an existing different grade always prompts
   const isOverwrite = currentGrade !== null && currentGrade !== undefined && currentGrade !== grade;
@@ -2122,16 +2130,16 @@ function applyGradeFromMatch(studentIndex, grade, overallConf, speechConfidence 
   }
 
   if (isOverwrite) {
-    showOverwriteConfirm(student, grade, studentIndex, { speechConfidence, matchConf: overallConf, overallConf });
+    showOverwriteConfirm(student, grade, studentIndex, { speechConfidence, matchScore });
     return;
   }
 
   if (isLow) {
-    showLowConfidenceConfirm(student, grade, studentIndex, originalText || student.name, { speechConfidence, matchConf: overallConf, overallConf });
+    showLowConfidenceConfirm(student, grade, studentIndex, originalText || student.name, { speechConfidence, matchScore });
     return;
   }
 
-  applyGrade(studentIndex, grade, overallConf);
+  applyGrade(studentIndex, grade, speechConfidence, matchScore);
 }
 
 // Format confidence as a percentage for display
@@ -2139,7 +2147,12 @@ function fmtPct(v) {
   return `${Math.round(v * 100)}%`;
 }
 
-function applyGrade(index, grade, confidence = 1) {
+// True when a grade should be flagged (still applied) due to low confidence.
+function isLowConfidence(speechConfidence, matchScore) {
+  return speechConfidence < SPEECH_WARN_THRESHOLD || matchScore < MATCH_WARN_THRESHOLD;
+}
+
+function applyGrade(index, grade, speechConfidence = 1, matchScore = 1) {
   pushUndo();
   const colId = state.activeColId;
   const activeCol = state.columns.find(c => c.id === colId);
@@ -2148,12 +2161,10 @@ function applyGrade(index, grade, confidence = 1) {
   render();
   scrollToRow(index);
   saveState();
+  const name = state.students[index].name;
   const colLabel = activeCol ? ` [${activeCol.name}]` : '';
-  if (confidence < 0.75) {
-    log(`${state.students[index].name}${colLabel} → ${grade} · confidence ${fmtPct(confidence)}`, 'warn');
-  } else {
-    log(`${state.students[index].name}${colLabel} → ${grade}`, 'ok');
-  }
+  console.debug('[grade]', { student: name, grade, speechConfidence, matchScore });
+  log(`${name}${colLabel} → ${grade} · (güven: ${fmtPct(matchScore)})`, isLowConfidence(speechConfidence, matchScore) ? 'warn' : 'ok');
 }
 
 // ============ "HEPSI" MODE HANDLERS ============
@@ -2186,9 +2197,7 @@ function handleFinalAll(text, speechConfidence = 1) {
       const matchScore = pendingAll.matchScore;
       const minSpeechConf = Math.min(...pendingAll.speechConfidences);
       clearPendingAll();
-      const matchConf = Math.max(0, 1 - (matchScore / 0.45));
-      const overallConf = Math.min(minSpeechConf, matchConf);
-      applyGradesAll(studentIndex, grades, overallConf, minSpeechConf, text);
+      applyGradesAll(studentIndex, grades, minSpeechConf, matchScore, text);
     } else if (collected > total) {
       playWarningSound();
       log(`Çok fazla not: ${collected} girildi ama ${total} sütun var`, 'err');
@@ -2236,9 +2245,7 @@ function handleFinalAll(text, speechConfidence = 1) {
 
   if (parsed.grades.length === state.columns.length) {
     // All grades in one utterance — proceed immediately
-    const matchConf = Math.max(0, 1 - (match.score / 0.45));
-    const overallConf = Math.min(speechConfidence, matchConf);
-    applyGradesAll(match.index, parsed.grades, overallConf, speechConfidence, text);
+    applyGradesAll(match.index, parsed.grades, speechConfidence, match.score, text);
   } else if (parsed.grades.length < state.columns.length) {
     // Partial grades — store and wait for the rest
     setPendingAll(match.index, parsed.grades, speechConfidence, match.score);
@@ -2248,7 +2255,7 @@ function handleFinalAll(text, speechConfidence = 1) {
   }
 }
 
-function applyGradesAll(studentIndex, grades, overallConf, speechConfidence = 1, originalText = '') {
+function applyGradesAll(studentIndex, grades, speechConfidence = 1, matchScore = 1, originalText = '') {
   assert(Array.isArray(grades), 'grades must be an array');
   assert(grades.length === state.columns.length, 'one grade per column required');
   const student = state.students[studentIndex];
@@ -2269,17 +2276,18 @@ function applyGradesAll(studentIndex, grades, overallConf, speechConfidence = 1,
 
   const isOverwrite = changes.some(ch =>
     ch.oldVal !== null && ch.oldVal !== undefined && ch.oldVal !== ch.newVal);
-  const isLow = overallConf < 0.55;
+  // Confirm prompt is gated on match quality only; speech is advisory.
+  const isLow = matchScore < MATCH_CONFIRM_THRESHOLD;
 
   if (isOverwrite || isLow) {
-    showAllConfirm(student, studentIndex, changes, { speechConfidence, overallConf }, originalText);
+    showAllConfirm(student, studentIndex, changes, { speechConfidence, matchScore }, originalText);
     return;
   }
 
-  commitGradesAll(studentIndex, changes, overallConf);
+  commitGradesAll(studentIndex, changes, speechConfidence, matchScore);
 }
 
-function commitGradesAll(studentIndex, changes, confidence = 1) {
+function commitGradesAll(studentIndex, changes, speechConfidence = 1, matchScore = 1) {
   assert(Array.isArray(changes) && changes.length, 'changes required');
   pushUndo();
   const student = state.students[studentIndex];
@@ -2292,11 +2300,8 @@ function commitGradesAll(studentIndex, changes, confidence = 1) {
   scrollToRow(studentIndex);
   saveState();
   const summary = changes.map(ch => `${ch.name}: ${ch.newVal}`).join(', ');
-  if (confidence < 0.75) {
-    log(`${student.name} → ${summary} · confidence ${fmtPct(confidence)}`, 'warn');
-  } else {
-    log(`${student.name} → ${summary}`, 'ok');
-  }
+  console.debug('[grades]', { student: student.name, summary, speechConfidence, matchScore });
+  log(`${student.name} → ${summary} · (güven: ${fmtPct(matchScore)})`, isLowConfidence(speechConfidence, matchScore) ? 'warn' : 'ok');
 }
 
 function showAllConfirm(student, index, changes, conf, originalText) {
@@ -2311,8 +2316,8 @@ function showAllConfirm(student, index, changes, conf, originalText) {
   }).join('<br>');
 
   let body = `Duyulan: <em>"${escapeHtml(originalText)}"</em><br><br>${rows}`;
-  if (conf && conf.overallConf < 0.75) {
-    body += `<br><br><span class="conf-warn">⚠ Tanıma güveni yalnızca ${fmtPct(conf.overallConf)} — lütfen doğrulayın.</span>`;
+  if (conf && isLowConfidence(conf.speechConfidence, conf.matchScore)) {
+    body += `<br><br><span class="conf-warn">⚠ Tanıma güveni düşük (${fmtPct(conf.matchScore)}) — lütfen doğrulayın.</span>`;
   }
   document.getElementById('confirmBody').innerHTML = body;
   modal.style.display = 'grid';
@@ -2331,7 +2336,7 @@ function showAllConfirm(student, index, changes, conf, originalText) {
     document.removeEventListener('keydown', onKey);
     resumeRecognitionAfterModal();
   };
-  const onOk = () => { commitGradesAll(index, changes, conf ? conf.overallConf : 1); cleanup(); };
+  const onOk = () => { commitGradesAll(index, changes, conf ? conf.speechConfidence : 1, conf ? conf.matchScore : 1); cleanup(); };
   const onCancel = () => { log(`İptal: "${originalText}"`, 'ok'); cleanup(); };
   const onKey = (e) => {
     if (e.key === 'Enter') onOk();
@@ -2372,8 +2377,8 @@ function showOverwriteConfirm(student, newGrade, index, conf = null) {
   let body =
     `<strong>${escapeHtml(student.name)}</strong> için zaten <span class="old">${currentGrade}</span> notu var. ` +
     `<span class="new">${newGrade}</span> ile değiştirilsin mi?`;
-  if (conf && conf.overallConf < 0.75) {
-    body += `<br><br><span class="conf-warn">⚠ Tanıma güveni yalnızca ${fmtPct(conf.overallConf)} — lütfen doğrulayın.</span>`;
+  if (conf && isLowConfidence(conf.speechConfidence, conf.matchScore)) {
+    body += `<br><br><span class="conf-warn">⚠ Tanıma güveni düşük (${fmtPct(conf.matchScore)}) — lütfen doğrulayın.</span>`;
   }
   document.getElementById('confirmBody').innerHTML = body;
   modal.style.display = 'grid';
@@ -2388,7 +2393,7 @@ function showOverwriteConfirm(student, newGrade, index, conf = null) {
     document.removeEventListener('keydown', onKey);
     resumeRecognitionAfterModal();
   };
-  const onOk = () => { applyGrade(index, newGrade); cleanup(); };
+  const onOk = () => { applyGrade(index, newGrade, conf ? conf.speechConfidence : 1, conf ? conf.matchScore : 1); cleanup(); };
   const onCancel = () => { log(`Kept ${student.name} at ${student.grade}`, 'ok'); cleanup(); };
   const onKey = (e) => {
     if (e.key === 'Enter') onOk();
@@ -2405,11 +2410,9 @@ function showLowConfidenceConfirm(student, newGrade, index, originalText, conf) 
   const modal = document.getElementById('confirmModal');
   document.getElementById('confirmTitle').textContent = `Tanıma güveni düşük — onaylayın?`;
 
-  // Explain what's uncertain
-  const issues = [];
-  if (conf.speechConfidence < 0.6) issues.push(`ses tanıma (${fmtPct(conf.speechConfidence)})`);
-  if (conf.matchConf < 0.6) issues.push(`isim eşleşmesi (${fmtPct(conf.matchConf)})`);
-  const issueText = issues.length ? `Düşük ${issues.join(' ve ')}.` : `Genel güven ${fmtPct(conf.overallConf)}.`;
+  // Explain what's uncertain. The modal fires on low match, so show that.
+  // (Speech confidence is console-only and never surfaced in the UI.)
+  const issueText = `Düşük isim eşleşmesi (${fmtPct(conf.matchScore)}).`;
 
   const body =
     `Duyulan: <em>"${escapeHtml(originalText)}"</em><br>` +
@@ -2432,7 +2435,7 @@ function showLowConfidenceConfirm(student, newGrade, index, originalText, conf) 
     document.removeEventListener('keydown', onKey);
     resumeRecognitionAfterModal();
   };
-  const onOk = () => { applyGrade(index, newGrade); cleanup(); };
+  const onOk = () => { applyGrade(index, newGrade, conf.speechConfidence, conf.matchScore); cleanup(); };
   const onCancel = () => { log(`Skipped low-confidence: "${originalText}"`, 'err'); cleanup(); };
   const onKey = (e) => {
     if (e.key === 'Enter') onOk();
