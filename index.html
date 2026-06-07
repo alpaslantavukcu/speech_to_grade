@@ -1431,9 +1431,9 @@ function findBestStudent(spokenName) {
     // Similarity: 1 = exact match, 0 = completely different.
     let score = 1 - ratio;
     // Note (Enes): I disabled this boost because it was causing false detection
-    // "Muhammed" will match with many names and get boosted to 0.85 accuracy,
+    // "Muhammed" will match with many names and get boosted to 0.85,
     // and there will be many matches with the same score. Then it will pick the first one in the list.
-    // So, I think it's safer to rely on pure Levenshtein distance without the boost, and set a reasonable threshold (MATCH_ACCEPT_THRESHOLD) for acceptance.
+    // So, I think it's safer to rely on pure Levenshtein distance without the boost, and set a reasonable threshold (MATCH_MIN_THRESHOLD) for acceptance.
     // Boost if spoken contains the student name as substring
     // if (target.includes(sName) || sName.includes(target)) score = Math.max(score, 0.85);
 
@@ -2088,8 +2088,9 @@ function handleFinal(text, speechConfidence = 1) {
     if (pendingName.studentIndex !== null) {
       const idx = pendingName.studentIndex;
       const combinedSpeechConf = Math.min(speechConfidence, pendingName.speechConfidence);
+      const matchScore = pendingName.matchScore;
       clearPendingName();
-      applyGradeFromMatch(idx, parsed.grade, combinedSpeechConf, pendingName.matchScore);
+      applyGradeFromMatch(idx, parsed.grade, combinedSpeechConf, matchScore);
     } else {
       playWarningSound();
       log(`No name in: "${text}"`, 'err');
@@ -2164,7 +2165,7 @@ function applyGrade(index, grade, speechConfidence = 1, matchScore = 1) {
   const name = state.students[index].name;
   const colLabel = activeCol ? ` [${activeCol.name}]` : '';
   console.debug('[grade]', { student: name, grade, speechConfidence, matchScore });
-  log(`${name}${colLabel} → ${grade} · (güven: ${fmtPct(matchScore)})`, isLowConfidence(speechConfidence, matchScore) ? 'warn' : 'ok');
+  log(`${name}${colLabel} → ${grade} · (Eşleşme: ${fmtPct(matchScore)})`, isLowConfidence(speechConfidence, matchScore) ? 'warn' : 'ok');
 }
 
 // ============ "HEPSI" MODE HANDLERS ============
@@ -2301,7 +2302,7 @@ function commitGradesAll(studentIndex, changes, speechConfidence = 1, matchScore
   saveState();
   const summary = changes.map(ch => `${ch.name}: ${ch.newVal}`).join(', ');
   console.debug('[grades]', { student: student.name, summary, speechConfidence, matchScore });
-  log(`${student.name} → ${summary} · (güven: ${fmtPct(matchScore)})`, isLowConfidence(speechConfidence, matchScore) ? 'warn' : 'ok');
+  log(`${student.name} → ${summary} · (Eşleşme: ${fmtPct(matchScore)})`, isLowConfidence(speechConfidence, matchScore) ? 'warn' : 'ok');
 }
 
 function showAllConfirm(student, index, changes, conf, originalText) {
@@ -2317,7 +2318,10 @@ function showAllConfirm(student, index, changes, conf, originalText) {
 
   let body = `Duyulan: <em>"${escapeHtml(originalText)}"</em><br><br>${rows}`;
   if (conf && isLowConfidence(conf.speechConfidence, conf.matchScore)) {
-    body += `<br><br><span class="conf-warn">⚠ Tanıma güveni düşük (${fmtPct(conf.matchScore)}) — lütfen doğrulayın.</span>`;
+    // Only show the match % when the match itself is the low metric; a low-speech
+    // trigger would otherwise display a (high) match score that contradicts the warning.
+    const detail = conf.matchScore < MATCH_WARN_THRESHOLD ? ` (${fmtPct(conf.matchScore)})` : '';
+    body += `<br><br><span class="conf-warn">⚠ Tanıma güveni düşük${detail} — lütfen doğrulayın.</span>`;
   }
   document.getElementById('confirmBody').innerHTML = body;
   modal.style.display = 'grid';
@@ -2378,7 +2382,10 @@ function showOverwriteConfirm(student, newGrade, index, conf = null) {
     `<strong>${escapeHtml(student.name)}</strong> için zaten <span class="old">${currentGrade}</span> notu var. ` +
     `<span class="new">${newGrade}</span> ile değiştirilsin mi?`;
   if (conf && isLowConfidence(conf.speechConfidence, conf.matchScore)) {
-    body += `<br><br><span class="conf-warn">⚠ Tanıma güveni düşük (${fmtPct(conf.matchScore)}) — lütfen doğrulayın.</span>`;
+    // Only show the match % when the match itself is the low metric; a low-speech
+    // trigger would otherwise display a (high) match score that contradicts the warning.
+    const detail = conf.matchScore < MATCH_WARN_THRESHOLD ? ` (${fmtPct(conf.matchScore)})` : '';
+    body += `<br><br><span class="conf-warn">⚠ Tanıma güveni düşük${detail} — lütfen doğrulayın.</span>`;
   }
   document.getElementById('confirmBody').innerHTML = body;
   modal.style.display = 'grid';
@@ -2394,7 +2401,7 @@ function showOverwriteConfirm(student, newGrade, index, conf = null) {
     resumeRecognitionAfterModal();
   };
   const onOk = () => { applyGrade(index, newGrade, conf ? conf.speechConfidence : 1, conf ? conf.matchScore : 1); cleanup(); };
-  const onCancel = () => { log(`Kept ${student.name} at ${student.grade}`, 'ok'); cleanup(); };
+  const onCancel = () => { log(`${student.name} notu ${currentGrade} olarak korundu`, 'ok'); cleanup(); };
   const onKey = (e) => {
     if (e.key === 'Enter') onOk();
     else if (e.key === 'Escape') onCancel();
